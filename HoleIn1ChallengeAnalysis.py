@@ -14,7 +14,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import norm
 from numpy.random import random, normal
 
-"""parameters"""
+"""-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
 dataset = courses[-1]
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
@@ -25,8 +25,9 @@ target = 29
 z_score_target = target + 0.5
 use_weights = use_weights and weight_spread > 0
 
-"""data"""
+"""-------------------- DATA LOADING/SAVING --------------------"""
 def readlines(filepath:str) -> list:
+    """Read a Text File Line by Line"""
     lines = None
     with open(filepath, 'r') as f:
         lines = f.readlines()
@@ -34,35 +35,68 @@ def readlines(filepath:str) -> list:
     return [l[:-1] if l.endswith('\n') else l for l in lines]
 
 def writelines(filepath:str, lines:list) -> None:
+    """Write a Text File Line by Line"""
     with open(filepath, 'w') as f:
         f.write('\n'.join(lines))
         f.close()
 
-def load(course:str = dataset) -> list:
+def load_raw(course:str = dataset) -> list:
+    """Load the Raw Data for the Specified Course"""
+    # Read/Parse the Lines of the Text File
     return [[int(s) for s in l.split(': ')[-1].split(',')] for l in readlines(f"{course}.txt")]
 
-raw = load()
+def load(course:str = dataset) -> (list, list, list):
+    """Load the Data for the Specified Course ('course' must be in the 'courses' list)"""
+    # Load the Raw Data
+    raw = load_raw(course)
+    
+    # Get the Front 9 Data for the Current Day (if the current day is incomplete)
+    current_day_front_half = []
+    if raw and len(raw[-1]) == 9:
+        current_day_front_half = raw[-1]
+    
+    # Get the Data from all Complete Days (ignoring warmup days)
+    data = np.array(raw[warmup_days:len(raw) - int(len(current_day_front_half) == 9)], int)
+    
+    # Return the Data Objects
+    return raw, data, current_day_front_half
 
-current_day_front_half = []
-if raw and len(raw[-1]) == 9:
-    current_day_front_half = raw.pop()
+# LOAD THE DATA
+raw, data, current_day_front_half = load()
 
-def save(course:str = dataset, data:list = raw) -> None:
+def save(course:str = dataset, data:list = raw, safe_mode:bool = True) -> None:
+    """Save the (Updated) Data for the Specified Course (WARNING: this will overwrite existing data, which cannot be undone)"""
+    # Prepare the File
     n = len(str(len(data)))
     lines = []
     for day, scores in enumerate(data, start  = 1):
         day = str(day)
         while len(day) < n: day = ' ' + day
         lines.append(f"{day} : " + ', '.join(','.join(map(str, scores[i:i + 9])) for i in [0, 9]))
-    if len(current_day_front_half) == 9:
-        day = str(len(lines) + 1)
-        while len(day) < n: day = ' ' + day
-        lines.append(f"{day} : " + ','.join(map(str, current_day_front_half)))
-    writelines(f"{course}.txt", lines)
+    if len(lines) > 0 and lines[-1].endswith(', '): lines[-1] = lines[-1][:-2]
+    
+    # Confirm the Save
+    abort = False
+    if safe_mode:
+        if len(lines) <= 10: print('\n'.join(lines))
+        else: print('\n'.join(lines[:5] + ['...'] + lines[-5:]))
+        s = input("\ncontinue? (y/n) ").lower()
+        if s.startswith('n'):
+            abort = True
+        elif not s.startswith('y'):
+            abort = True
+            print(f"unrecognized response '{s}'; save aborted")
+    
+    # Save the File
+    if abort: 
+        print("save file aborted by user, file not saved")
+    else:
+        filepath = f"{course}.txt"
+        writelines(filepath, lines)
+        if safe_mode: print(f"file saved to '{filepath}'")
 
-data = np.array(raw[warmup_days:], int)
 
-"""pre-processing"""
+"""-------------------- PRE-PROCESSING --------------------"""
 total_shots = np.sum(data, axis = 1)
 total_shots_by_half = (np.sum(data[:,:9], axis = 1), np.sum(data[:,9:], axis = 1))
 if current_day_front_half:
@@ -116,7 +150,7 @@ if min_HI1_probability > 0:
 expected_shots = [sum(p*t for t, p in enumerate(hole, start = 1)) for h, hole in enumerate(shot_probabilities, start = 1)]
 
 
-"""utility functions"""
+"""-------------------- UTILITIES --------------------"""
 # Compute the Product of an Iterable
 def product(iterable:iter):
     prod = 1
@@ -153,7 +187,7 @@ def estimate_single_player_probabilities(probabilities = shot_probabilities, plo
     
     return P_single
 
-"""analysis methods"""
+"""-------------------- ANALYSIS --------------------"""
  
 @cache
 def P_success(hole:int = 0, shots:int = target, exact:bool = False, end = 18):
@@ -404,7 +438,7 @@ def plot_round_probability(scores:list = 0, starting_hole:int = 1):
     plt.xticks(X, X)
     plt.show()
 
-def plot_hole_probabilities(probabilities:list = shot_probabilities, ranked:bool = True, colors = ['violet', 'mediumorchid', 'purple', 'indigo'], width = 0.75):
+def plot_hole_probabilities(probabilities:list = shot_probabilities, ranked:bool = True, colors = ['violet', 'mediumorchid', 'purple', 'indigo', 'maroon'], width = 0.75):
     """Plot the Hole Probabilities as a Stacked Bar Plot"""
     
     # get the data in the proper format
@@ -537,7 +571,7 @@ def all_plots(score_histogram:bool = False, round_shots:list = 0):
     plot_hole_probabilities()
     plot_round_probability(round_shots)
 
-"""Run the Main Analysis"""
+"""-------------------- Run the Main Analysis --------------------"""
 
 def main_analysis():
     # Compute the Round Score Distribution Using the Recursive Solver
