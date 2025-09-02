@@ -15,7 +15,7 @@ from scipy.stats import norm
 from numpy.random import random, normal
 
 """parameters"""
-courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha']
+courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
 dataset = courses[-1]
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
@@ -54,6 +54,10 @@ def save(course:str = dataset, data:list = raw) -> None:
         day = str(day)
         while len(day) < n: day = ' ' + day
         lines.append(f"{day} : " + ', '.join(','.join(map(str, scores[i:i + 9])) for i in [0, 9]))
+    if len(current_day_front_half) == 9:
+        day = str(len(lines) + 1)
+        while len(day) < n: day = ' ' + day
+        lines.append(f"{day} : " + ','.join(map(str, current_day_front_half)))
     writelines(f"{course}.txt", lines)
 
 data = np.array(raw[warmup_days:], int)
