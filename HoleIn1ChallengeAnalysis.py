@@ -17,6 +17,7 @@ from numpy.random import random, normal
 """-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
 dataset = courses[-1]
+use_historical = False
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
 use_weights = 0
@@ -132,6 +133,37 @@ else:
 sums = [sum(hole.values()) for hole in counts]  #  should equal [days, days, ..., days], but this is safer in case I do weird weighting shit
 shot_probabilities = [[hole[s] / n for s in range(1, max(hole.keys()) + 1)] for hole, n in zip(counts, sums)]
 
+# Factor In Historical Data
+if use_historical and dataset in ('gastraus'):
+    # Get the Data
+    if dataset == 'gastraus':
+        N = [46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 50, 48, 50, 50, 46, 46]
+        C = [2, 0, 1, 3, 1, 10, 0, 4, 0, 1, 2, 1, 2, 0, 0, 0, 4, 2]
+    
+    # Compute the Scramble Probabilities
+    P = [c / n for n, c in zip(N, C)]
+    P = [1 - (1 - p)**2 for p in P]
+    
+    # Update the Shot Probabilities
+    alpha = 0.5
+    if use_historical == 2:
+        # Weight Only by Alpha
+        for p, Q in zip(P, shot_probabilities):
+            Q[0] = (alpha * p + (1 - alpha) * Q[0])
+            k = (1 - Q[0])/sum(Q[1:])
+            for i in range(1, len(Q)):
+                Q[i] *= k
+    else:
+        # Weight by Alpha and by Number of Observations
+        for n, p, Q in zip(N, P, shot_probabilities):
+            Q[0] = 2 * ((alpha * n * p + (1 - alpha) * len(data) * Q[0])) / (n + len(data))
+            k = (1 - Q[0])/sum(Q[1:])
+            for i in range(1, len(Q)):
+                Q[i] *= k
+        del(n)
+    
+    # Clean Up Variables
+    del(N, C, P, p, Q, k, i, alpha)
 
 # Assert that the Probability of a Hole-In-1 is Never 0
 if min_HI1_probability > 0:
