@@ -5,7 +5,6 @@ Created on Fri May 16 20:53:36 2025
 @author: violet
 """
 
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import Counter, defaultdict
@@ -17,7 +16,7 @@ from numpy.random import random, normal
 """-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
 dataset = courses[-1]
-use_historical = False
+use_historical = False # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
 use_weights = 0
