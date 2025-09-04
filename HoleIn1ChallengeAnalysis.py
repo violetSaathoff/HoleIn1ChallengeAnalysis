@@ -672,7 +672,9 @@ def main_analysis():
         p = P_success(9, target - score)
         print(f'\nProbability of Winning Today (Sitting on {score}): {100*p:.2f}%')
     else:
-        print(f'\nLikelihood of Previous Round: {100*path_probability(data[-1]):.3f}%')
+        p = path_probability(data[-1])
+        pr = p / product((max(hole) for hole in shot_probabilities))
+        print(f'\nRelative Likelihood of Previous Round: {pr:.3f} (absolute = {100*p:.3f}%)')
     
     if False:
         r = np.corrcoef(list(range(len(total_shots))), total_shots)
