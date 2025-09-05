@@ -713,7 +713,7 @@ def main_analysis():
         """
         x_max += 1
         plt.figure()
-        if included&1: plt.plot(X[x_min:x_max], exact_probabilities[x_min:x_max], label = 'P(score = x)', color = 'violet')
+        if included&1: plt.plot(X[x_min:x_max], exact_probabilities[x_min:x_max], label = 'P(score == x)', color = 'violet')
         if included&2: plt.plot(X[x_min:x_max], probabilities[x_min:x_max], label = 'P(score <= x)', color = 'teal')
         if included&4: plt.hist(np.sum(data, axis = 1), [x - 0.5 for x in range(x_min, x_max + 2)], density = True, weights = weights)
         plt.ylabel('Probability')
