@@ -16,7 +16,7 @@ from numpy.random import random, normal
 """-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
 dataset = courses[-1]
-use_historical = False # False/True/2 (only affects supported courses)
+use_historical = 0 # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
 use_weights = 0
@@ -95,6 +95,19 @@ def save(course:str = dataset, data:list = raw, safe_mode:bool = True) -> None:
         writelines(filepath, lines)
         if safe_mode: print(f"file saved to '{filepath}'")
 
+def add_day(day:list, course:str = dataset, data:list = raw, save_data:bool = True, safe_mode:bool = True) -> None:
+    """Add a Full Day or Half Data to the Data File for the Course"""
+    # Add the Data to the Data Structure
+    if len(raw) > 0 and len(data[-1]) == 9:
+        if len(day) == 9:
+            data[-1].extend(day)
+        else:
+            raise Exception("expecting a half day's worth of data")
+    else:
+        data.append(day)
+    
+    # Save the Data
+    if save_data: save(course, data, safe_mode)
 
 """-------------------- PRE-PROCESSING --------------------"""
 total_shots = np.sum(data, axis = 1)
