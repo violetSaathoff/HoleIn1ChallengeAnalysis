@@ -22,7 +22,7 @@ weight_spread = 0.5
 use_weights = 0
 min_HI1_probability = 0
 target = 29
-z_score_target = target + 0.5
+z_score_target = target + 0.6
 use_weights = use_weights and weight_spread > 0
 
 """-------------------- DATA LOADING/SAVING --------------------"""
@@ -284,14 +284,14 @@ def P_success(hole:int = 0, shots:int = target, exact:bool = False, end = 18):
         return shots == 0
     else:
         # recursive case -> sum the contribution from getting a every possible score on the current hole
-        return sum(p * P_success(hole + 1, shots - s, exact, end) for s, p in enumerate(shot_probabilities[hole], start = 1) if p > 0)
+        return float(sum(p * P_success(hole + 1, shots - s, exact, end) for s, p in enumerate(shot_probabilities[hole], start = 1) if p > 0))
 
 def P_success_given_front(front_score:int):
     """Compute the Probability of Completing the Challenge Given a Score on the Front 9"""
     return P_success(9, target - front_score, False, 18)
 
 # Generate All Possible "Paths" to Beating the Challenge
-def Paths(shots:int = target, hole:int = 0, end = 18, exact:bool = False, compute_probabilities:bool = True) -> list:
+def Paths(shots:int = target, hole:int = 0, end = 18, exact:bool = False) -> list:
     """Generate All Possible "Paths" to Beating the Challenge
     
     This effectively does the same computation as P_success(), except that it tracks the paths, and can't be cached. 
@@ -306,7 +306,7 @@ def Paths(shots:int = target, hole:int = 0, end = 18, exact:bool = False, comput
     def helper(hole:int, shots:int, P:float):
         if hole == end:
             if P > 0 and shots == 0 or (not exact and shots > 0):
-                yield path_probability(path, start) if compute_probabilities else path.copy()
+                yield (path.copy(), path_probability(path, start))
         elif P > 0 and shots >= end - hole:
             for s, p in enumerate(shot_probabilities[hole], start = 1):
                 path.append(s)
