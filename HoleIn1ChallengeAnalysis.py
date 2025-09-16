@@ -437,8 +437,7 @@ def rank_holes(expectation_value:bool = False, print_results:bool = True, plot:b
     """Rank the Holes Based on how 'Good' they are (either by hole-in-1 probability, or by expected shots)"""
     expectation_value = int(bool(expectation_value))
     holes = [(h, P[0], e) for h, (P, e) in enumerate(zip(shot_probabilities, expected_shots), start = 1)]
-    holes.sort(key = lambda x : x[2 - expectation_value], reverse = expectation_value)      #  secondary sort first
-    holes.sort(key = lambda x : x[1 + expectation_value], reverse = 1 - expectation_value)  #  primary sort
+    holes.sort(key = lambda x : (x[1], -x[2])[::(1 - 2*expectation_value)], reverse = True)
     
     if plot:
         fig, ax = plt.subplots()
@@ -453,7 +452,7 @@ def rank_holes(expectation_value:bool = False, print_results:bool = True, plot:b
         plt.show()
     
     if print_results:
-        print('Hole Ranking: (Hole-In-One Probability, Expected Shots)')
+        print('Hole Ranking: Hole-In-One Probability (Expected Shots)')
         for h, p, e in holes:
             print(f"{h}\t:\t{100*p:.1f}%\t({e:.2f})")
     else:
@@ -488,11 +487,13 @@ def plot_hole_probabilities(probabilities:list = shot_probabilities, ranked:bool
     # get the data in the proper format
     y_bins = max(map(len, probabilities))
     if ranked:
-        ranked = sorted([(x, P) for x, P in enumerate(probabilities, start = 1)], key = lambda x : x[1][0], reverse = True)
-        x = [x for x, _ in ranked]
-        probabilities = [np.array([hole[s] if s < len(hole) else 0 for _, hole in ranked]) for s in range(y_bins)]
+        ranked = [(h, probabilities[h - 1], e) for h, p, e in rank_holes(ranked == 2, False, False)]
+        x = [x for x, _, _ in ranked]
+        e = [e for _, _, e in ranked]
+        probabilities = [np.array([hole[s] if s < len(hole) else 0 for _, hole, _ in ranked]) for s in range(y_bins)]
     else:
         x = list(range(1, 19))
+        e = expected_shots.copy()
         probabilities = [np.array([hole[s] if s < len(hole) else 0 for hole in probabilities]) for s in range(y_bins)]
     
     # Make the Main Figure
@@ -504,6 +505,8 @@ def plot_hole_probabilities(probabilities:list = shot_probabilities, ranked:bool
         bottom += probabilities[s]
     
     # Add the Text/Legend
+    x0, y0, w, h = ax.get_position().bounds
+    for X, E in zip(xx, e): fig.text(x0 + (X + 0.05)*w/19.5, 0.9, f"{E:.2f}", fontsize = 8, rotation = 90, rotation_mode = 'default', transform_rotates_text = True)
     ax.set_xlabel('Hole')
     ax.set_ylabel('Probability')
     ax.legend(loc = 'center left', bbox_to_anchor = (1, 0.5))
