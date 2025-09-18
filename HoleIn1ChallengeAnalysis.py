@@ -481,7 +481,7 @@ def plot_round_probability(scores:list = 0, starting_hole:int = 1):
     plt.xticks(X, X)
     plt.show()
 
-def plot_hole_probabilities(probabilities:list = shot_probabilities, ranked:bool = True, colors = ['violet', 'mediumorchid', 'purple', 'indigo', 'maroon'], width = 0.75):
+def plot_hole_probabilities(probabilities:list = shot_probabilities, ranked:bool = True, colors = ['violet', 'mediumorchid', 'purple', 'indigo', 'maroon', 'red'], width = 0.75):
     """Plot the Hole Probabilities as a Stacked Bar Plot"""
     
     # get the data in the proper format
