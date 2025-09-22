@@ -15,14 +15,14 @@ from numpy.random import random, normal
 
 """-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
-dataset = courses[-1]
+dataset = courses[0]
 use_historical = 0 # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
 use_weights = 0
 min_HI1_probability = 0
 target = 29
-z_score_target = target + 0.6
+z_score_target = target + 0.5
 use_weights = use_weights and weight_spread > 0
 
 """-------------------- DATA LOADING/SAVING --------------------"""
