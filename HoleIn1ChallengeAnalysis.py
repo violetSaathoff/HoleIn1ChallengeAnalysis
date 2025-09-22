@@ -24,6 +24,7 @@ min_HI1_probability = 0
 target = 29
 z_score_target = target + 0.5
 use_weights = use_weights and weight_spread > 0
+bp18 = False # at big putts, when false, use hole 1 for hole 18, when true use the special hole for hole 18 (challenge days 11+)
 
 """-------------------- DATA LOADING/SAVING --------------------"""
 def readlines(filepath:str) -> list:
@@ -128,6 +129,11 @@ if not use_weights:
     counts = [Counter(data[:,i]) for i in range(18)]
     for d, s in enumerate(current_day_front_half):
         counts[d][s] += 1
+    
+    # Update Things for Big Putts
+    if dataset == 'bigputts':
+        counts[0] = Counter(list(data[:,0]) + list(data[warmup_days:10,-1]))
+        counts[-1] = Counter(data[max(warmup_days, 10):,-1]) if bp18 else counts[0].copy()
 else:
     # weight more recent days more
     counts = [defaultdict(int) for i in range(18)]
@@ -139,6 +145,22 @@ else:
     for d, s in enumerate(current_day_front_half):
         counts[d][s] += weights[-1]
     if extra: weights = weights[:-1]
+    
+    # Update Things for Big Putts
+    if dataset == 'bigputts':
+        counts[0] = defaultdict(int)
+        counts[-1] = defaultdict(int)
+        for i, w in enumerate(weights[:-1] if extra else weights):
+            counts[0][data[i][0]] += w
+            if i < 10:
+                counts[0][data[i][-1]] += w
+            elif bp18:
+                counts[-1][data[i][-1]] += w
+        if not bp18: counts[-1] = counts[0].copy()
+        for h in [0, -1]:
+            s = sum(counts[h].values())
+            for i, w in counts[h].items():
+                counts[h][i] = w / s
 
 
 # Compute the Shot Probabilities for Each Hole Directly (this is the main tool I use later)
