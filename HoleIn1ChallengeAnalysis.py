@@ -15,7 +15,7 @@ from numpy.random import random, normal
 
 """-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
-dataset = courses[2]
+dataset = courses[1]
 use_historical = 0 # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
@@ -485,7 +485,7 @@ def rank_holes(expectation_value:bool = False, print_results:bool = True, plot:b
 def plot_round_probability(scores:list = 0, starting_hole:int = 1):
     """Plot the Probability of Success Before Each Shot Throughout a Round (<scores> can also be the 1-indexed day number: 0 -> most recent round)"""
     if type(scores) == int:
-        scores = data[scores - 1]
+        scores = data[scores - 1 if scores >= 0 else scores]
     
     # Get the Probabilities
     X = []
