@@ -15,7 +15,7 @@ from numpy.random import random, normal
 
 """-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
-dataset = courses[1]
+dataset = courses[2]
 use_historical = 0 # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
@@ -52,12 +52,14 @@ def load(course:str = dataset) -> (list, list, list):
     raw = load_raw(course)
     
     # Get the Front 9 Data for the Current Day (if the current day is incomplete)
+    days = len(raw)
     current_day_front_half = []
-    if raw and len(raw[-1]) == 9:
-        current_day_front_half = raw[-1]
+    if raw and len(raw[-1]) < 18:
+        if len(raw[-1]) == 9: current_day_front_half = raw[-1]
+        days -= 1
     
     # Get the Data from all Complete Days (ignoring warmup days)
-    data = np.array(raw[warmup_days:len(raw) - int(len(current_day_front_half) == 9)], int)
+    data = np.array(raw[warmup_days:days], int)
     
     # Return the Data Objects
     return raw, data, current_day_front_half
@@ -308,9 +310,13 @@ def P_success(hole:int = 0, shots:int = target, exact:bool = False, end = 18):
         # recursive case -> sum the contribution from getting a every possible score on the current hole
         return float(sum(p * P_success(hole + 1, shots - s, exact, end) for s, p in enumerate(shot_probabilities[hole], start = 1) if p > 0))
 
-def P_success_given_front(front_score:int):
+def P_success_given_front(front_score:int, total_shots:int = target, exact:bool = False, end:int = 18):
     """Compute the Probability of Completing the Challenge Given a Score on the Front 9"""
-    return P_success(9, target - front_score, False, 18)
+    return P_success(9, total_shots - front_score, exact, end)
+
+def P_success_given_partial(scores:list, total_shots:int = target, exact:bool = False, end:int = 18):
+    """Compute the Probability of Completing the Challenge Given the First n Holes"""
+    return P_success(len(scores), total_shots - sum(scores), exact, end)
 
 # Generate All Possible "Paths" to Beating the Challenge
 def Paths(shots:int = target, hole:int = 0, end = 18, exact:bool = False) -> list:
