@@ -44,7 +44,7 @@ def writelines(filepath:str, lines:list) -> None:
 def load_raw(course:str = dataset) -> list:
     """Load the Raw Data for the Specified Course"""
     # Read/Parse the Lines of the Text File
-    return [[int(s) for s in l.split(': ')[-1].split(',')] for l in readlines(f"{course}.txt")]
+    return [[int(s) for s in (s.replace(' ', '') for s in l.split(': ')[-1].split(',')) if s.isdigit()] for l in readlines(f"{course}.txt")]
 
 def load(course:str = dataset) -> (list, list, list):
     """Load the Data for the Specified Course ('course' must be in the 'courses' list)"""
@@ -52,14 +52,10 @@ def load(course:str = dataset) -> (list, list, list):
     raw = load_raw(course)
     
     # Get the Front 9 Data for the Current Day (if the current day is incomplete)
-    days = len(raw)
-    current_day_front_half = []
-    if raw and len(raw[-1]) < 18:
-        if len(raw[-1]) == 9: current_day_front_half = raw[-1]
-        days -= 1
+    current_day_front_half = raw[-1] if raw and len(raw[-1]) == 9 else []
     
     # Get the Data from all Complete Days (ignoring warmup days)
-    data = np.array(raw[warmup_days:days], int)
+    data = np.array([day for day in raw[warmup_days:] if len(day) == 18], int)
     
     # Return the Data Objects
     return raw, data, current_day_front_half
