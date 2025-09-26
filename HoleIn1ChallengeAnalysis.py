@@ -594,15 +594,27 @@ def plot_P_success_given_front(front_scores = range(9, target - 9)):
     # Return the Data
     return P
 
-def plot_score_distribution(shots:int = 0, start:int = 0, end:int = 18, include_full_round:bool = True):
+def plot_score_distribution(shots:int = 0, start:int = 0, end:int = 18, include_full_round:bool = True, include_histogram:bool = False, include_cumulative:bool = False):
     """Plot the Expected Distribution of Scores Over the Run of Holes Specified"""
     # Update the include_full_round Flag
-    include_full_round = include_full_round and (shots > 0 or start > 0)
+    include_full_round = include_full_round and (shots > 0 or start > 0) and (not include_histogram or 2 in (include_full_round, include_histogram))
     
     # Compute a List of All Possible Numbers of Shots Remaining, Then Compute the Probability for Each
     S = list(range(shots + end - start, shots + 2 + sum(map(len, shot_probabilities[start:]))))
     P = [P_success(start, s - shots, True, end) for s in S]
     P2 = [P_success(0, s, True, end) for s in S] if include_full_round else []
+    
+    # Get the Histogram Data
+    counts = defaultdict(int, Counter(int(shots + s) for s in np.sum(data[:,start:end], 1)))
+    rounds = sum(counts.values())
+    for score in counts:
+        counts[score] /= rounds
+    
+    # Get the Cumulative Data
+    C = [0]*len(P)
+    for i, p in enumerate(P): C[i] = C[i - 1] + p
+    C2 = [0]*len(P)
+    for i, p in enumerate(P2): C2[i] = C2[i - 1] + p
     
     # Compute the Expected Number of Shots
     #E = sum(s*p for s, p in zip(S, P))
@@ -610,8 +622,12 @@ def plot_score_distribution(shots:int = 0, start:int = 0, end:int = 18, include_
     # Plot the Result
     fix, ax = plt.subplots()
     #plt.plot([E, E], [0, max(P)], '--', color = 'lightgrey', label = f'Expected Shots = {E:.2f}')
-    plt.plot(S, P, color = 'violet', label = f'After the First {start} Holes')
-    if include_full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'Before the First Hole')
+    plt.plot(S, P, color = 'violet', label = f'After the First {start} Holes', zorder = 100)
+    if include_full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'Before the First Hole', zorder = 99)
+    if include_histogram: plt.bar(S, [counts[s] for s in S], color = 'lightpink', alpha = 0.7, zorder = 96)
+    if include_cumulative:
+        plt.plot(S, C, '-.', color = 'violet', zorder = 98)
+        if include_full_round: plt.plot(S, C2, '-.', color = 'lightgrey', zorder = 97)
     plt.xlabel('Total Shots' + f'\n(sitting on {shots} after {start} holes)'*bool(shots or start))
     plt.ylabel('Likelihood: P(score == x)')
     if include_full_round: plt.legend()
