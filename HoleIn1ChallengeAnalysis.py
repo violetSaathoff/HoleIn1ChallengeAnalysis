@@ -15,7 +15,7 @@ from numpy.random import random, normal
 
 """-------------------- PARAMETERS --------------------"""
 courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
-dataset = courses[1]
+dataset = courses[-1]
 use_historical = 0 # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
 weight_spread = 0.5
@@ -43,8 +43,15 @@ def writelines(filepath:str, lines:list) -> None:
 
 def load_raw(course:str = dataset) -> list:
     """Load the Raw Data for the Specified Course"""
+    # Line Parser
+    def parse(line:str) -> (str, list):
+        day, scores = line.split(' : ')
+        scores = scores.replace(' ', '').split(',')
+        scores = [int(s) for s in scores if s.isdigit()]
+        return day, scores
+    
     # Read/Parse the Lines of the Text File
-    return [[int(s) for s in (s.replace(' ', '') for s in l.split(': ')[-1].split(',')) if s.isdigit()] for l in readlines(f"{course}.txt")]
+    return [(day, scores) for day, scores in map(parse, readlines(f"{course}.txt"))]
 
 def load(course:str = dataset) -> (list, list, list):
     """Load the Data for the Specified Course ('course' must be in the 'courses' list)"""
@@ -52,61 +59,16 @@ def load(course:str = dataset) -> (list, list, list):
     raw = load_raw(course)
     
     # Get the Front 9 Data for the Current Day (if the current day is incomplete)
-    current_day_front_half = raw[-1] if raw and len(raw[-1]) == 9 else []
+    current_day_front_half = raw[-1][1] if raw and len(raw[-1][1]) == 9 else []
     
     # Get the Data from all Complete Days (ignoring warmup days)
-    data = np.array([day for day in raw[warmup_days:] if len(day) == 18], int)
+    data = np.array([day for _, day in raw[warmup_days:] if len(day) == 18], int)
     
     # Return the Data Objects
     return raw, data, current_day_front_half
 
 # LOAD THE DATA
 raw, data, current_day_front_half = load()
-
-def save(course:str = dataset, data:list = raw, safe_mode:bool = True) -> None:
-    """Save the (Updated) Data for the Specified Course (WARNING: this will overwrite existing data, which cannot be undone)"""
-    # Prepare the File
-    n = len(str(len(data)))
-    lines = []
-    for day, scores in enumerate(data, start  = 1):
-        day = str(day)
-        while len(day) < n: day = ' ' + day
-        lines.append(f"{day} : " + ', '.join(','.join(map(str, scores[i:i + 9])) for i in [0, 9]))
-    if len(lines) > 0 and lines[-1].endswith(', '): lines[-1] = lines[-1][:-2]
-    
-    # Confirm the Save
-    abort = False
-    if safe_mode:
-        if len(lines) <= 10: print('\n'.join(lines))
-        else: print('\n'.join(lines[:5] + ['...'] + lines[-5:]))
-        s = input("\ncontinue? (y/n) ").lower()
-        if s.startswith('n'):
-            abort = True
-        elif not s.startswith('y'):
-            abort = True
-            print(f"unrecognized response '{s}'; save aborted")
-    
-    # Save the File
-    if abort: 
-        print("save file aborted by user, file not saved")
-    else:
-        filepath = f"{course}.txt"
-        writelines(filepath, lines)
-        if safe_mode: print(f"file saved to '{filepath}'")
-
-def add_day(day:list, course:str = dataset, data:list = raw, save_data:bool = True, safe_mode:bool = True) -> None:
-    """Add a Full Day or Half Data to the Data File for the Course"""
-    # Add the Data to the Data Structure
-    if len(raw) > 0 and len(data[-1]) == 9:
-        if len(day) == 9:
-            data[-1].extend(day)
-        else:
-            raise Exception("expecting a half day's worth of data")
-    else:
-        data.append(day)
-    
-    # Save the Data
-    if save_data: save(course, data, safe_mode)
 
 """-------------------- PRE-PROCESSING --------------------"""
 total_shots = np.sum(data, axis = 1)
@@ -130,8 +92,8 @@ if not use_weights:
     
     # Update Things for Big Putts
     if dataset == 'bigputts':
-        counts[0] = Counter(list(data[:,0]) + list(data[warmup_days:10,-1]))
-        counts[-1] = Counter(data[max(warmup_days, 10):,-1]) if bp18 else counts[0].copy()
+        counts[0] = Counter(list(data[:,0]) + list(data[:10,-1]) + list(data[24-warmup_days:,-1]))
+        counts[-1] = Counter(data[10-warmup_days:24-warmup_days,-1]) if bp18 else counts[0].copy()
 else:
     # weight more recent days more
     counts = [defaultdict(int) for i in range(18)]
@@ -150,7 +112,7 @@ else:
         counts[-1] = defaultdict(int)
         for i, w in enumerate(weights[:-1] if extra else weights):
             counts[0][data[i][0]] += w
-            if i < 10:
+            if i < 10 - warmup_days or i >= 24 - warmup_days:
                 counts[0][data[i][-1]] += w
             elif bp18:
                 counts[-1][data[i][-1]] += w
@@ -632,6 +594,27 @@ def plot_P_success_given_front(front_scores = range(9, target - 9)):
     # Return the Data
     return P
 
+def plot_score_distribution(shots:int = 0, start:int = 0, end:int = 18):
+    """Plot the Expected Distribution of Scores Over the Run of Holes Specified"""
+    # Compute a List of All Possible Numbers of Shots Remaining, Then Compute the Probability for Each
+    S = list(range(shots + end - start, shots + 2 + sum(map(len, shot_probabilities[start:]))))
+    P = [P_success(start, s - shots, True, end) for s in S]
+    
+    # Compute the Expected Number of Shots
+    #E = sum(s*p for s, p in zip(S, P))
+    
+    # Plot the Result
+    fix, ax = plt.subplots()
+    #plt.plot([E, E], [0, max(P)], '--', color = 'lightgrey', label = f'Expected Shots = {E:.2f}')
+    plt.plot(S, P, color = 'violet')
+    plt.xlabel('Total Shots' + f'\n(sitting on {shots} after {start} holes)'*bool(shots or start))
+    plt.ylabel('Likelihood')
+    #plt.legend()
+    plt.show()
+    
+    # Return the Data
+    return P
+
 def all_plots(score_histogram:bool = False, round_shots:list = 0):
     plot(7 if score_histogram else 3)
     # rank_holes()
@@ -640,6 +623,7 @@ def all_plots(score_histogram:bool = False, round_shots:list = 0):
     analyze_front_vs_back()
     plot_P_success_given_front()
     plot_hole_probabilities()
+    if current_day_front_half: plot_score_distribution(sum(current_day_front_half), 9, 18)
     plot_round_probability(round_shots)
 
 """-------------------- Run the Main Analysis --------------------"""
@@ -710,7 +694,11 @@ def main_analysis():
     if current_day_front_half:
         score = sum(current_day_front_half)
         p = P_success(9, target - score)
-        print(f'\nProbability of Winning Today (Sitting on {score}): {100*p:.2f}%')
+        e = score + b
+        s = (sum(P_success(9, s, True, 18) * (s + score)**2 for s in range(9, sum(map(len, shot_probabilities[9:])) + 1)) - e**2)**0.5
+        z = (z_score_target - e) / s
+        p2 = norm.sf(-z)
+        print(f'\nProbability of Winning Today (Sitting on {score}): {100*p:.2f}%\nExpected Shots = {e:.3f} ± {s:.3f} (z = {z:.3f}, p = {100*p2:.3f}%)')
     else:
         p = path_probability(data[-1])
         pr = p / product((max(hole) for hole in shot_probabilities))
@@ -769,6 +757,7 @@ def main_analysis():
     analyze_front_vs_back()
     plot_P_success_given_front()
     plot_hole_probabilities()
+    if current_day_front_half: plot_score_distribution(sum(current_day_front_half), 9, 18)
     plot_round_probability()
     
     # Return the Data and the Plot Function
