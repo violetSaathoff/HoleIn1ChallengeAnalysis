@@ -594,11 +594,15 @@ def plot_P_success_given_front(front_scores = range(9, target - 9)):
     # Return the Data
     return P
 
-def plot_score_distribution(shots:int = 0, start:int = 0, end:int = 18):
+def plot_score_distribution(shots:int = 0, start:int = 0, end:int = 18, include_full_round:bool = True):
     """Plot the Expected Distribution of Scores Over the Run of Holes Specified"""
+    # Update the include_full_round Flag
+    include_full_round = include_full_round and (shots > 0 or start > 0)
+    
     # Compute a List of All Possible Numbers of Shots Remaining, Then Compute the Probability for Each
     S = list(range(shots + end - start, shots + 2 + sum(map(len, shot_probabilities[start:]))))
     P = [P_success(start, s - shots, True, end) for s in S]
+    P2 = [P_success(0, s, True, end) for s in S] if include_full_round else []
     
     # Compute the Expected Number of Shots
     #E = sum(s*p for s, p in zip(S, P))
@@ -606,10 +610,11 @@ def plot_score_distribution(shots:int = 0, start:int = 0, end:int = 18):
     # Plot the Result
     fix, ax = plt.subplots()
     #plt.plot([E, E], [0, max(P)], '--', color = 'lightgrey', label = f'Expected Shots = {E:.2f}')
-    plt.plot(S, P, color = 'violet')
+    plt.plot(S, P, color = 'violet', label = f'After the First {start} Holes')
+    if include_full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'Before the First Hole')
     plt.xlabel('Total Shots' + f'\n(sitting on {shots} after {start} holes)'*bool(shots or start))
-    plt.ylabel('Likelihood')
-    #plt.legend()
+    plt.ylabel('Likelihood: P(score == x)')
+    if include_full_round: plt.legend()
     plt.show()
     
     # Return the Data
