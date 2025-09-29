@@ -14,7 +14,7 @@ from scipy.stats import norm
 from numpy.random import random, normal
 
 """-------------------- PARAMETERS --------------------"""
-courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus']
+courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus', 'bigputts waukesha']
 dataset = courses[-1]
 use_historical = 0 # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
@@ -93,7 +93,12 @@ if not use_weights:
     # Update Things for Big Putts
     if dataset == 'bigputts':
         counts[0] = Counter(list(data[:,0]) + list(data[:10,-1]) + list(data[24-warmup_days:,-1]))
+        if current_day_front_half: counts[0][current_day_front_half[0]] += 1
         counts[-1] = Counter(data[10-warmup_days:24-warmup_days,-1]) if bp18 else counts[0].copy()
+    elif dataset == 'bigputts waukesha':
+        counts[0] = Counter(list(data[:,0]) + list(data[:,-1]))
+        if current_day_front_half: counts[0][current_day_front_half[0]] += 1
+        counts[-1] = counts[0].copy()
 else:
     # weight more recent days more
     counts = [defaultdict(int) for i in range(18)]
@@ -106,7 +111,7 @@ else:
         counts[d][s] += weights[-1]
     if extra: weights = weights[:-1]
     
-    # Update Things for Big Putts
+    # Update Things for Big Putts, or Big Putts Waukesha
     if dataset == 'bigputts':
         counts[0] = defaultdict(int)
         counts[-1] = defaultdict(int)
@@ -116,12 +121,25 @@ else:
                 counts[0][data[i][-1]] += w
             elif bp18:
                 counts[-1][data[i][-1]] += w
+        if current_day_front_half: counts[0][current_day_front_half[0]] += w
         if not bp18: counts[-1] = counts[0].copy()
         for h in [0, -1]:
             s = sum(counts[h].values())
             for i, w in counts[h].items():
                 counts[h][i] = w / s
-
+    elif dataset == 'bigputts waukesha':
+        # average holes 1 and 18 (since they are the same hole)
+        counts[0] = defaultdict(int)
+        counts[-1] = defaultdict(int)
+        for i, w in enumerate(weights[:-1] if extra else weights):
+            counts[0][data[i][0]] += w
+            counts[0][data[i][-1]] += w
+        if current_day_front_half: counts[0][current_day_front_half[0]] += w
+        counts[-1] = counts[0].copy()
+        for h in [0, -1]:
+            s = sum(counts[h].values())
+            for i, w in counts[h].items():
+                counts[h][i] = w / s
 
 # Compute the Shot Probabilities for Each Hole Directly (this is the main tool I use later)
 sums = [sum(hole.values()) for hole in counts]  #  should equal [days, days, ..., days], but this is safer in case I do weird weighting shit
