@@ -14,7 +14,7 @@ from scipy.stats import norm
 from numpy.random import random, normal
 
 """-------------------- PARAMETERS --------------------"""
-courses = ['bigputts', 'swingtime', 'teeaire', 'waukesha', 'gastraus', 'bigputts waukesha']
+courses = ['bigputts', 'swingtime', 'teeaire', 'swingtime waukesha', 'gastraus', 'bigputts waukesha']
 dataset = courses[-1]
 use_historical = 0 # False/True/2 (only affects supported courses)
 warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
