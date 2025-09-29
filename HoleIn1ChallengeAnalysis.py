@@ -41,17 +41,33 @@ def writelines(filepath:str, lines:list) -> None:
         f.write('\n'.join(lines))
         f.close()
 
+class Round(list):
+    def __init__(self, line:str, course:str = None):
+        self.raw = line
+        self.course = course
+        self.name, scores = line.split(' : ')
+        scores = scores.replace(' ', '').split(',')
+        self.extend(int(s) for s in scores if s.isdigit())
+        self.front = sum(self[:9]) if len(self) >= 9 else None
+        self.back = sum(self[9:]) if len(self) == 18 else None
+        self.completion = bool(self.front) + 2*bool(self.back)
+        self.complete = self.completion == 3
+        self.score = self.front + self.back if self.complete else None
+    
+    def __repr__(self) -> str:
+        front = ','.join(map(str, (s for s in self[:9]))) if self.front else ''
+        back = ','.join(map(str, (s for s in self[9:]))) if self.back else ''
+        if not front:
+            scores = ','.join(map(str, self)) + ' Incomplete'
+        elif not back:
+            scores = front
+        else:
+            scores = ', '.join((front, back))
+        return f"[Day {self.name}: {scores}]"
+
 def load_raw(course:str = dataset) -> list:
     """Load the Raw Data for the Specified Course"""
-    # Line Parser
-    def parse(line:str) -> (str, list):
-        day, scores = line.split(' : ')
-        scores = scores.replace(' ', '').split(',')
-        scores = [int(s) for s in scores if s.isdigit()]
-        return day, scores
-    
-    # Read/Parse the Lines of the Text File
-    return [(day, scores) for day, scores in map(parse, readlines(f"{course}.txt"))]
+    return list(map(Round, readlines(f"{course}.txt")))
 
 def load(course:str = dataset) -> (list, list, list):
     """Load the Data for the Specified Course ('course' must be in the 'courses' list)"""
@@ -59,10 +75,10 @@ def load(course:str = dataset) -> (list, list, list):
     raw = load_raw(course)
     
     # Get the Front 9 Data for the Current Day (if the current day is incomplete)
-    current_day_front_half = raw[-1][1] if raw and len(raw[-1][1]) == 9 else []
+    current_day_front_half = raw[-1] if raw and len(raw[-1]) == 9 else []
     
     # Get the Data from all Complete Days (ignoring warmup days)
-    data = np.array([day for _, day in raw[warmup_days:] if len(day) == 18], int)
+    data = np.array([day for day in raw[warmup_days:] if len(day) == 18], int)
     
     # Return the Data Objects
     return raw, data, current_day_front_half
@@ -71,10 +87,8 @@ def load(course:str = dataset) -> (list, list, list):
 raw, data, current_day_front_half = load()
 
 """-------------------- PRE-PROCESSING --------------------"""
-total_shots = np.sum(data, axis = 1)
-total_shots_by_half = (np.sum(data[:,:9], axis = 1), np.sum(data[:,9:], axis = 1))
-if current_day_front_half:
-    total_shots_by_half = (np.hstack((total_shots_by_half[0], sum(current_day_front_half))), total_shots_by_half[1])
+total_shots = [r.score for r in raw if r.complete]
+total_shots_by_half = ([r.front for r in raw if r.completion&1], [r.back for r in raw if r.completion&2])
 
 days = len(data)
 min_score = int(np.min(np.sum(data, axis = 1)))
