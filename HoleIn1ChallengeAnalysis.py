@@ -16,7 +16,7 @@ from numpy.random import random, normal
 """-------------------- PARAMETERS --------------------"""
 class params:
     courses = ['bigputts', 'swingtime', 'teeaire', 'swingtime waukesha', 'gastraus', 'bigputts waukesha']
-    dataset = courses[1]
+    dataset = courses[0]
     use_historical = 0 # False/True/2 (only affects supported courses)
     warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
     weight_spread = 0.5
@@ -131,7 +131,13 @@ class Course(list):
             
             # Update Things for Specific Courses
             if params.dataset == 'bigputts':
-                pass
+                self.counts[0] = defaultdict(float)
+                self.counts[17] = defaultdict(float)
+                for i, (r, w) in zip(self.used, start = params.warmup_days):
+                    self.counts[0][r[0]] += w  #  hole 1 always counts towards hole 1
+                    if i < 10 or i >= 24: self.counts[0][r[17]] += w  #  hole 18 sometimes counts towards hole 1
+                    elif params.bp18: self.counts[17][r[17]] += w  #  hole 18 sometimes counts towards itself
+                if not params.bp18: self.counts[17] = self.counts[0].copy()  #  hole 18 = hole 1 based on the input parameters
             elif params.dataset == 'bigputts waukesha':
                 # Combine Holes 1 and 18 Directly
                 counts = defaultdict(float)
