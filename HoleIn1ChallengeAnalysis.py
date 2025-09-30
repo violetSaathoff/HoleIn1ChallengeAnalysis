@@ -16,7 +16,7 @@ from numpy.random import random, normal
 """-------------------- PARAMETERS --------------------"""
 class params:
     courses = ['bigputts', 'swingtime', 'teeaire', 'swingtime waukesha', 'gastraus', 'bigputts waukesha']
-    dataset = courses[0]
+    dataset = courses[-1]
     use_historical = 0 # False/True/2 (only affects supported courses)
     warmup_days = 0 #  how many days of data at the start of the challenge should be ignored as "warm up"
     weight_spread = 0.5
@@ -42,7 +42,6 @@ def quadratic(a:float, b:float, c:float):
     d = np.sqrt(b**2 - 4*a*c)
     return (-b - d)/(2*a), (-b + d)/(2*a)
 
-"""-------------------- DATA LOADING/SAVING/PRE-PROCESSING --------------------"""
 def readlines(filepath:str) -> list:
     """Read a Text File Line by Line"""
     lines = None
@@ -57,7 +56,9 @@ def writelines(filepath:str, lines:list) -> None:
         f.write('\n'.join(lines))
         f.close()
 
+"""-------------------- DATA LOADING/SAVING/PRE-PROCESSING --------------------"""
 class Round(list):
+    """Data Ojbect for Storing Each Round's Info"""
     def __init__(self, line:str):
         self.raw = line
         self.name, scores = line.split(' : ')
@@ -72,15 +73,19 @@ class Round(list):
     def __repr__(self) -> str:
         front = ','.join(map(str, (s for s in self[:9]))) if self.front else ''
         back = ','.join(map(str, (s for s in self[9:]))) if self.back else ''
+        score = ''
         if not front:
             scores = ','.join(map(str, self)) + ' Incomplete'
         elif not back:
             scores = front
+            score = f' ({self.front})'
         else:
             scores = ', '.join((front, back))
-        return f"[Day {self.name}: {scores}]"
+            score = f" : {self.front} + {self.back} = {self.score}"
+        return f"[Day {self.name}: {scores}{score}]"
 
 class Course(list):
+    """Object for Storing All Data for a Particular Course, and Doing Probability Calculations/Analysis, and Making Plots"""
     def __init__(self, course:str = params.dataset):
         """Load the Data for the Specified Course ('course' must be in the 'courses' list)"""
         # Load the Data
@@ -119,7 +124,7 @@ class Course(list):
                 self.counts[0] = Counter([r[0] for r in self.used] + [r[17] for i, r in enumerate(self) if i >= params.warmup_days and (i < 10 or i >= 24)])
                 self.counts[-1] = Counter([r[17] for r in self.used[max(params.warmup_days, 10):24]]) if params.bp18 else self.counts[0].copy()
             elif params.dataset == 'bigputts waukesha':
-                self.counts[0] = Counter([r[0] for r in self.used] + [r[17] for r in self.used])
+                self.counts[0] = Counter([r[0] for r in self.used if len(r) > 0] + [r[17] for r in self.used if len(r) == 18])
                 self.counts[-1] = self.counts[0].copy()
         else:
             # weight more recent days more
@@ -194,6 +199,13 @@ class Course(list):
         # Compute the Expected Number of Shots
         self.expected_shots = [sum(p*t for t, p in enumerate(hole, start = 1)) for h, hole in enumerate(self.shot_probabilities, start = 1)]
     
+    def __repr__(self) -> str:
+        if params.warmup_days > 0 and len(self) >= params.warmup_days:
+            n = 45 + len(self[params.warmup_days - 1].name)
+            return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) for r in self[:params.warmup_days]) + ',\n\t' + '-'*n + '\n\t' + ',\n\t'.join(str(r) for r in self[params.warmup_days:]) + '\n]'
+        else:
+            return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) for r in self) + '\n]'
+    
     def path_probability(self, path:list, start:int = 0) -> float:
         """Compute the Likelihood of a Particular Round"""
         return product((self.shot_probabilities[h][s - 1] for h, s in enumerate(path, start = start)))
@@ -231,8 +243,8 @@ class Course(list):
         shoot a 29"), and if it's false it computes the probability they'll use complete the holes with shots 
         remaining (i.e. "what is the probability they shoot a 29 or better").
         
-        To compute probabilities for the back 9, use calls like P_success(9, 29 - x), where x is their score on 
-        the front 9. Similarly, to compute probabilities for the front 9, use calls like P_success(shots = x, end = 9) 
+        To compute probabilities for the back 9, use calls like Course.P(9, 29 - x), where x is their score on 
+        the front 9. Similarly, to compute probabilities for the front 9, use calls like Course.P(shots = x, end = 9) 
         where x is the number of shots they're allowed on the front 9. By similar calls you can compute probabilities 
         for any arbitrary stretch of holes.
         
@@ -242,10 +254,10 @@ class Course(list):
         where holes are 0-indexed
         
         This function uses the recursion relation:
-            P_success(h, s) = P(1 on hole h) * P_success(h, s - 1) + P(2 on hole h) * P_success(h, s - 2)) + ...
+            Course.P(h, s) = P(1 on hole h) * Course.P(h, s - 1) + P(2 on hole h) * Course.P(h, s - 2)) + ...
         (which is kinda just how probability trees work lol)
         And the base case:
-            P_success(end, shots, True, end) = 1 if shots == 0 else 0
+            Course.P(end, shots, True, end) = 1 if shots == 0 else 0
         (i.e. if you have no holes remaining and no shots remaining, then you've completed all the holes 
         using exactly the specified number of shots. And otherwise, you haven't)
         
@@ -291,10 +303,10 @@ class Course(list):
     def Paths(self, shots:int = params.target, hole:int = 0, end = 18, exact:bool = False) -> list:
         """Generate All Possible "Paths" to Beating the Challenge
         
-        This effectively does the same computation as P_success(), except that it tracks the paths, and can't be cached. 
+        This effectively does the same computation as Course.P(), except that it tracks the paths, and can't be cached. 
         This means it's significantly slower, so it is not used in the main analysis, but can be used to compute interesting 
         metrics like "what score to they realistically need on the front 9 to have good odds on the day". That being said, 
-        those sorts of metrics can also be computed using P_success() if you're clever.
+        those sorts of metrics can also be computed using Course.P() if you're clever.
         """
         
         # a recursive helper function which walks along all possible paths
@@ -317,7 +329,7 @@ class Course(list):
         """Simulate N Rounds of Minigolf to Estimate the Rate of Shooting <shots> or Better 
         (either modeling each hole as a guassian, or by using 'shot_probabilities')
         
-        In practice, P_success() should always give more accurate results (and run faster); 
+        In practice, Course.P() should always give more accurate results (and run faster); 
         and as a result, this is not used in my main analysis.
         """
         
@@ -650,8 +662,8 @@ class Course(list):
         
     def all_plots(self, score_histogram:bool = False, round_shots:list = 0):
         self.plot_score_distribution(include_histogram = score_histogram, include_cumulative = True)
-        # rank_holes()
-        # plot_expected_shots()
+        # rank_holes() # hole ranking happens in self.plot_hole_probabilities()
+        # plot_expected_shots() # expected shots are included in self.plot_hole_probabilities()
         self.plot_halves(print_results = False)
         self.analyze_front_vs_back()
         self.plot_P_success_given_front()
@@ -659,121 +671,120 @@ class Course(list):
         if self.current_day_front_half: self.plot_score_distribution(sum(self.current_day_front_half), 9, 18)
         self.plot_round_probability(round_shots)
 
+    def analyze(self):
+        # Compute the Round Score Distribution Using the Recursive Solver
+        X = np.array(range(3*18 + 1))
+        exact_probabilities = np.array([self.P(shots = s, exact = True) for s in X])
+        probabilities = np.array([self.P(shots = s) for s in X])
+        expected_score = sum(s*p for hole in self.shot_probabilities for s, p in enumerate(hole, start = 1))
+        expected_var = sum(sum(s*s*p for s, p in enumerate(hole, start = 1)) - sum(s*p for s, p in enumerate(hole, start = 1))**2 for hole in self.shot_probabilities)
+        expected_stdev = np.sqrt(expected_var)
+        z0 = (params.z_score_target - expected_score) / expected_stdev
+        p0 = norm.sf(-z0)
+        
+        # Do Gaussian Fits
+        parameters, var = curve_fit(gaussian, np.array(range(0, len(exact_probabilities))), exact_probabilities)
+        var = np.sqrt(np.diag(var))
+        mean_shots = np.mean(self.scores * (self.weights if type(self.weights) == np.ndarray else 1))
+        std_shots = np.std(self.scores)
+        
+        # Mean/Dev of Scores by Half Analysis
+        e5 = sum(np.mean(half) for half in self.scores_by_half)
+        u5 = np.sqrt(sum(np.std(half)**2 for half in self.scores_by_half))
+        z5 = (params.z_score_target - e5) / u5
+        p5 = norm.sf(-z5)
+        
+        # Do a Hole-In-1 Count Analysis
+        p4, s4, v4 = self.hole_in_one_analysis(False)
+        
+        # Run a Quick Monte-Carlo Sim (using a Gaussian Fit for Each Hole)
+        mean, dev, p3 = self.montecarlo(N = 1000, gaussian = True, output = 2)
+        
+        # Compute the Z-Scores and P Values for the Fits (assuming anything less than 29.5 "breaks 30")
+        z1 = (params.z_score_target - mean_shots) / std_shots
+        z2 = (params.z_score_target - parameters[0]) / parameters[1]
+        p1 = norm.sf(-z1)
+        p2 = norm.sf(-z2)
+        
+        # Get the Expected Number of Days From a P Value
+        def E(p:float) -> str:
+            return 'NaN  ' if p <= 0 else f"{1 / p + params.warmup_days:.2f}"
+        
+        # Print the Results
+        print('\n'.join([
+            'Method\t\t\tMean\t\tSTDev\t\tZ-Score\t\tProbability\t\tExpected Days', 
+            '-'*81,
+            f'Tree Search\t\t{expected_score:.2f}\t\t \t\t\t\t\t\t  {probabilities[params.target]:.5f}\t\t\t{E(probabilities[params.target])}',
+            '-'*81,
+            f'Tree Search*\t{expected_score:.2f}\t\t{expected_stdev:.3f}\t\t{z0:.3f}\t\t  {p0:.5f}\t\t\t{E(p0)}',
+            f'Gaussian Fit*\t{parameters[0]:.2f}\t\t{parameters[1]:.3f}\t\t{z2:.3f}\t\t  {p2:.5f}\t\t\t{E(p2)}',
+            f'Round Scores\t{mean_shots:.2f}\t\t{std_shots:.3f}\t\t{z1:.3f}\t\t  {p1:.5f}\t\t\t{E(p1)}',
+            f'Half Scores\t\t{e5:.2f}\t\t{u5:.3f}\t\t{z5:.3f}\t\t  {p5:.5f}\t\t\t{E(p5)}',
+            #f'HIO Analysis\t{s4:.2f}\t\t{v4:.3f}\t\t\t\t\t  {p4:.5f}\t\t\t{E(p4)}',
+            f'Monte Carlo\t \t{mean:.2f}\t\t{dev:.3f}\t\t\t\t\t  {p3:.5f}\t\t\t{E(p3)}',
+            '*based on Tree Search results'
+        ]))
+        
+        # Print the Expected Shots
+        f = sum(self.expected_shots[:9])
+        b = sum(self.expected_shots[9:])
+        t = sum(self.expected_shots)
+        easier = 'Front' if f < b else 'Back'
+        print(f'\nExpected Shots: {f:.2f} (Front) + {b:.2f} (Back) = {t:.2f} (Total)')
+        print(f'{easier} is {abs(f - b):.2f} shots easier')
+        
+        # Print the Odds of Completing the Challenge on the Current Dat
+        if self.current_day_front_half:
+            score = sum(self.current_day_front_half)
+            p = self.P(9, params.target - score)
+            e = score + b
+            s = (sum(self.P(9, s, True, 18) * (s + score)**2 for s in range(9, sum(map(len, self.shot_probabilities[9:])) + 1)) - e**2)**0.5
+            z = (params.z_score_target - e) / s
+            p2 = norm.sf(-z)
+            print(f'\nProbability of Winning Today (Sitting on {score}): {100*p:.2f}%\nExpected Shots = {e:.3f} ± {s:.3f} (z = {z:.3f}, p = {100*p2:.3f}%)')
+        else:
+            p = self.path_probability(self.data[-1])
+            pr = p / product((max(hole) for hole in self.shot_probabilities))
+            print(f'\nRelative Likelihood of Previous Round: {pr:.3f} (absolute = {100*p:.3f}%)')
+        
+        if False:
+            r = np.corrcoef(list(range(len(self.scores))), self.scores)
+            print(f'\nTotal Shots vs Time Correlation: {r[0,1]:.3f}')
+        
+        # Print Some Notes on the Methodology
+        if False:
+            print('\n'.join([ 
+                '',
+                'The main method is the Tree Search method, which uses the estimated shot probabilities to compute the ',
+                'likelihood of every possible round. These results can be used in a few other ways though. First, is ',
+                'the Tree Search*, where the probabilities are computed for exact scores using the Tree Search, and ',
+                'then expectation values are calculated for the round score and its variance, which are then used to ',
+                'compute a Z-score, which is converted to a probability using a 1-tailed test. The Gaussian Fit method ',
+                'works very similarly, but instead of computing expectation values, the exactt probabilities are fit to ',
+                'a Gaussian probability density function, resulting in slightly different estimates for the mean and ',
+                'standard deviation. The Round Scores method, on the other hand, just computes the mean and standard ',
+                'deviation of the round scores directly, and then uses the same 1-tailed test to estimate the probability. ',
+                'Lastly, the Monte Carlo method simulates 1000 rounds where each hole is approximated with a Gaussian fit. ',
+                'It is possible to change the parameters of the Monte Carlo simulation to instead use the measured shot ',
+                'probabilities, and it is possible to run an arbitrarily large number of simulated rounds, but I think ',
+                'this is a decent starting place (which doesn\'t take too much time to run) - though repeated runs do ',
+                'give fairly different results. The HIO Analysis tries to estimate a distribution for "how likely are ',
+                'they to shoot X 1\'s in a round?" (and for 2\'s, 3\'s, etc.), and then tries all combinations of those ',
+                'to estimate the probability they shoot a combination which breaks 30. This method currently suffers from ',
+                '\'gaps\' in the data, and does need to use a fudge factor to produce sensible results for the mean and ',
+                'standard deviation; which does call into question the validity of it\'s main result.'
+            ]))
+        
+        # Make the Plots
+        self.all_plots()
+        
+        # Return the Data and the Plot Function
+        return probabilities, exact_probabilities
+
+"""-------------------- Run the Main Analysis --------------------"""
+
 # LOAD THE DATA
 course = Course()
 shot_probabilities = course.shot_probabilities
 expected_shots = course.expected_shots
-
-"""-------------------- Run the Main Analysis --------------------"""
-
-def main_analysis():
-    # Compute the Round Score Distribution Using the Recursive Solver
-    X = np.array(range(3*18 + 1))
-    exact_probabilities = np.array([course.P(shots = s, exact = True) for s in X])
-    probabilities = np.array([course.P(shots = s) for s in X])
-    expected_score = sum(s*p for hole in course.shot_probabilities for s, p in enumerate(hole, start = 1))
-    expected_var = sum(sum(s*s*p for s, p in enumerate(hole, start = 1)) - sum(s*p for s, p in enumerate(hole, start = 1))**2 for hole in course.shot_probabilities)
-    expected_stdev = np.sqrt(expected_var)
-    z0 = (params.z_score_target - expected_score) / expected_stdev
-    p0 = norm.sf(-z0)
-    
-    # Do Gaussian Fits
-    parameters, var = curve_fit(gaussian, np.array(range(0, len(exact_probabilities))), exact_probabilities)
-    var = np.sqrt(np.diag(var))
-    mean_shots = np.mean(course.scores * (course.weights if type(course.weights) == np.ndarray else 1))
-    std_shots = np.std(course.scores)
-    
-    # Mean/Dev of Scores by Half Analysis
-    e5 = sum(np.mean(half) for half in course.scores_by_half)
-    u5 = np.sqrt(sum(np.std(half)**2 for half in course.scores_by_half))
-    z5 = (params.z_score_target - e5) / u5
-    p5 = norm.sf(-z5)
-    
-    # Do a Hole-In-1 Count Analysis
-    p4, s4, v4 = course.hole_in_one_analysis(False)
-    
-    # Run a Quick Monte-Carlo Sim (using a Gaussian Fit for Each Hole)
-    mean, dev, p3 = course.montecarlo(N = 1000, gaussian = True, output = 2)
-    
-    # Compute the Z-Scores and P Values for the Fits (assuming anything less than 29.5 "breaks 30")
-    z1 = (params.z_score_target - mean_shots) / std_shots
-    z2 = (params.z_score_target - parameters[0]) / parameters[1]
-    p1 = norm.sf(-z1)
-    p2 = norm.sf(-z2)
-    
-    # Get the Expected Number of Days From a P Value
-    def E(p:float) -> str:
-        return 'NaN  ' if p <= 0 else f"{1 / p + params.warmup_days:.2f}"
-    
-    # Print the Results
-    print('\n'.join([
-        'Method\t\t\tMean\t\tSTDev\t\tZ-Score\t\tProbability\t\tExpected Days', 
-        '-'*81,
-        f'Tree Search\t\t{expected_score:.2f}\t\t \t\t\t\t\t\t  {probabilities[params.target]:.5f}\t\t\t{E(probabilities[params.target])}',
-        '-'*81,
-        f'Tree Search*\t{expected_score:.2f}\t\t{expected_stdev:.3f}\t\t{z0:.3f}\t\t  {p0:.5f}\t\t\t{E(p0)}',
-        f'Gaussian Fit*\t{parameters[0]:.2f}\t\t{parameters[1]:.3f}\t\t{z2:.3f}\t\t  {p2:.5f}\t\t\t{E(p2)}',
-        f'Round Scores\t{mean_shots:.2f}\t\t{std_shots:.3f}\t\t{z1:.3f}\t\t  {p1:.5f}\t\t\t{E(p1)}',
-        f'Half Scores\t\t{e5:.2f}\t\t{u5:.3f}\t\t{z5:.3f}\t\t  {p5:.5f}\t\t\t{E(p5)}',
-        #f'HIO Analysis\t{s4:.2f}\t\t{v4:.3f}\t\t\t\t\t  {p4:.5f}\t\t\t{E(p4)}',
-        f'Monte Carlo\t \t{mean:.2f}\t\t{dev:.3f}\t\t\t\t\t  {p3:.5f}\t\t\t{E(p3)}',
-        '*based on Tree Search results'
-    ]))
-    
-    # Print the Expected Shots
-    f = sum(course.expected_shots[:9])
-    b = sum(course.expected_shots[9:])
-    t = sum(course.expected_shots)
-    easier = 'Front' if f < b else 'Back'
-    print(f'\nExpected Shots: {f:.2f} (Front) + {b:.2f} (Back) = {t:.2f} (Total)')
-    print(f'{easier} is {abs(f - b):.2f} shots easier')
-    
-    # Print the Odds of Completing the Challenge on the Current Dat
-    if course.current_day_front_half:
-        score = sum(course.current_day_front_half)
-        p = course.P(9, params.target - score)
-        e = score + b
-        s = (sum(course.P(9, s, True, 18) * (s + score)**2 for s in range(9, sum(map(len, course.shot_probabilities[9:])) + 1)) - e**2)**0.5
-        z = (params.z_score_target - e) / s
-        p2 = norm.sf(-z)
-        print(f'\nProbability of Winning Today (Sitting on {score}): {100*p:.2f}%\nExpected Shots = {e:.3f} ± {s:.3f} (z = {z:.3f}, p = {100*p2:.3f}%)')
-    else:
-        p = course.path_probability(course.data[-1])
-        pr = p / product((max(hole) for hole in course.shot_probabilities))
-        print(f'\nRelative Likelihood of Previous Round: {pr:.3f} (absolute = {100*p:.3f}%)')
-    
-    if False:
-        r = np.corrcoef(list(range(len(course.scores))), course.scores)
-        print(f'\nTotal Shots vs Time Correlation: {r[0,1]:.3f}')
-    
-    # Print Some Notes on the Methodology
-    if False:
-        print('\n'.join([ 
-            '',
-            'The main method is the Tree Search method, which uses the estimated shot probabilities to compute the ',
-            'likelihood of every possible round. These results can be used in a few other ways though. First, is ',
-            'the Tree Search*, where the probabilities are computed for exact scores using the Tree Search, and ',
-            'then expectation values are calculated for the round score and its variance, which are then used to ',
-            'compute a Z-score, which is converted to a probability using a 1-tailed test. The Gaussian Fit method ',
-            'works very similarly, but instead of computing expectation values, the exactt probabilities are fit to ',
-            'a Gaussian probability density function, resulting in slightly different estimates for the mean and ',
-            'standard deviation. The Round Scores method, on the other hand, just computes the mean and standard ',
-            'deviation of the round scores directly, and then uses the same 1-tailed test to estimate the probability. ',
-            'Lastly, the Monte Carlo method simulates 1000 rounds where each hole is approximated with a Gaussian fit. ',
-            'It is possible to change the parameters of the Monte Carlo simulation to instead use the measured shot ',
-            'probabilities, and it is possible to run an arbitrarily large number of simulated rounds, but I think ',
-            'this is a decent starting place (which doesn\'t take too much time to run) - though repeated runs do ',
-            'give fairly different results. The HIO Analysis tries to estimate a distribution for "how likely are ',
-            'they to shoot X 1\'s in a round?" (and for 2\'s, 3\'s, etc.), and then tries all combinations of those ',
-            'to estimate the probability they shoot a combination which breaks 30. This method currently suffers from ',
-            '\'gaps\' in the data, and does need to use a fudge factor to produce sensible results for the mean and ',
-            'standard deviation; which does call into question the validity of it\'s main result.'
-        ]))
-    
-    # Make the Plots
-    course.all_plots()
-    
-    # Return the Data and the Plot Function
-    return probabilities, exact_probabilities
-
-probabilities, exact_probabilities = main_analysis()
+course.analyze()
