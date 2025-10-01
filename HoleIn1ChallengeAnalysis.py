@@ -89,9 +89,10 @@ class Course(list):
     def __init__(self, course:str = params.dataset):
         """Load the Data for the Specified Course ('course' must be in the 'courses' list)"""
         # Load the Data
-        self.course = course
-        self.index = params.courses.index(course)
-        self.extend(map(Round, readlines(f"{course}.txt")))
+        self.course = params.courses[course] if type(course) == int else course
+        self.warmup_days = params.warmup_days
+        self.index = params.courses.index(self.course)
+        self.extend(map(Round, readlines(f"{self.course}.txt")))
         self.used = self[params.warmup_days:]
         self.current_day_front_half = self[-1] if self and len(self[-1]) == 9 else []
         self.data = np.array([r for r in self.used if r.complete], int)
@@ -115,7 +116,7 @@ class Course(list):
         self.weights = None
         if not params.use_weights:
             # Weight all days the same
-            self.counts = [Counter(self.data[:,i]) for i in range(18)]
+            self.counts = [Counter(map(int, self.data[:,i])) for i in range(18)]
             for d, s in enumerate(self.current_day_front_half):
                 self.counts[d][s] += 1
             
@@ -184,6 +185,10 @@ class Course(list):
                     for i in range(1, len(Q)):
                         Q[i] *= k
         
+        # Compute the Variance for Each Hole
+        self.variances = [1/sum(c.values())**2 for c in self.counts]
+        self.variance = sum(self.variances)
+        
         # Assert a Minimum Hole-In-One Probability
         if params.min_HI1_probability > 0:
             for hole in self.shot_probabilities:
@@ -200,11 +205,28 @@ class Course(list):
         self.expected_shots = [sum(p*t for t, p in enumerate(hole, start = 1)) for h, hole in enumerate(self.shot_probabilities, start = 1)]
     
     def __repr__(self) -> str:
-        if params.warmup_days > 0 and len(self) >= params.warmup_days:
-            n = 45 + len(self[params.warmup_days - 1].name)
-            return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) for r in self[:params.warmup_days]) + ',\n\t' + '-'*n + '\n\t' + ',\n\t'.join(str(r) for r in self[params.warmup_days:]) + '\n]'
-        else:
+        if len(self) == 0:
+            return f"{self.course} : []"
+        elif self.warmup_days == 0:
             return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) for r in self) + '\n]'
+        elif len(self) < self.warmup_days:
+            return ''.join([
+                f"{self.course} : [\n\t",
+                ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
+                ',\n\t',
+                '-'*(45 + len(self[-1].name)),
+                '\n]'
+            ])
+        else:
+            return ''.join([
+                f"{self.course} : [\n\t",
+                ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
+                ',\n\t',
+                '-'*(45 + len(self[self.warmup_days - 1].name)),
+                '\n\t',
+                ',\n\t'.join(str(r) for r in self[self.warmup_days:]),
+                '\n]'
+            ])
     
     def path_probability(self, path:list, start:int = 0) -> float:
         """Compute the Likelihood of a Particular Round"""
@@ -231,7 +253,7 @@ class Course(list):
     
     """-------------------- ANALYSIS --------------------"""
     
-    def P(self, hole:int = 0, shots:int = params.target, exact:bool = False, end = 18):
+    def P(self, hole:int = 0, shots:int = params.target, exact:bool = False, end:int = 18, return_uncertainty:bool = False):
         """Estimate the Likelihood of Beating the Target by Trying All Possible Options
         
         THIS IS THE MAIN METHOD FOR MY ANALYSIS 
@@ -269,7 +291,11 @@ class Course(list):
         
         # Check the Cache, Reusing Computations Whenever Possible
         state = (hole, shots, exact, end)
-        if state in self._cache:
+        if return_uncertainty:
+            p = self.P(hole, shots, exact, end, False)
+            u = p * self.variance**0.5
+            return p, u
+        elif state in self._cache:
             self._hits += 1
         else:
             self._misses += 1
@@ -290,6 +316,17 @@ class Course(list):
         
         # Return the Memorized Result
         return self._cache[state]
+    
+    def E(self, shots:int = params.target, exact:bool = False, start:int = 0, end:int = 18, return_uncertainty:bool = True):
+        """Compute the Expected Number of Days to Complete the Challenge (includes uncertainty propagation)"""
+        p = self.P(start, shots, exact, end, return_uncertainty)
+        if return_uncertainty:
+            p, u = p
+            e = 1/p
+            ue = u * e**2
+            return e, ue
+        else:
+            return 1/p
     
     def P_success_given_front(self, front_score:int, total_shots:int = params.target, exact:bool = False, end:int = 18):
         """Compute the Probability of Completing the Challenge Given a Score on the Front 9"""
@@ -671,7 +708,7 @@ class Course(list):
         if self.current_day_front_half: self.plot_score_distribution(sum(self.current_day_front_half), 9, 18)
         self.plot_round_probability(round_shots)
 
-    def analyze(self):
+    def analyze(self, return_probabilities:bool = False):
         # Compute the Round Score Distribution Using the Recursive Solver
         X = np.array(range(3*18 + 1))
         exact_probabilities = np.array([self.P(shots = s, exact = True) for s in X])
@@ -707,10 +744,36 @@ class Course(list):
         p2 = norm.sf(-z2)
         
         # Get the Expected Number of Days From a P Value
-        def E(p:float) -> str:
-            return 'NaN  ' if p <= 0 else f"{1 / p + params.warmup_days:.2f}"
+        def E(p:float, up:float = None) -> str:
+            if p <= 0:
+                return 'NaN' if up == None else 'NaN ± NaN'
+            elif up == None:
+                return f"{1 / p + params.warmup_days:.2f}"
+            else:
+                e = 1/p
+                ue = up * e**2
+                return f"{e + params.warmup_days:.2f} ± {ue:.2f}"
+        
+        def println(method:str, e_shots = None, s_shots = None, z = None, p = None, up = None, e_days = None, u_days = None):
+            s_shots = '\t' if s_shots == None else f'{s_shots:.3f}'
+            z = ' \t' if z == None else f'{z:.3f}'
+            e = E(p, u_days) if e_days == None else f'{e_days:.2f} ± {u_days:.2f}'
+            print(f'{method}\t{e_shots:.2f}\t\t{s_shots}\t\t{z}\t\t  {p:.5f}\t\t\t{e}')
+        
+        print('Method\t\t\tMean\t\tSTDev\t\tZ-Score\t\tProbability\t\t\tExpected Days')
+        print('-'*89)
+        println('Tree Search\t', expected_score, None, None, probabilities[params.target], None, *self.E())
+        print('-'*89)
+        println('Tree Search*', expected_score, expected_stdev, z0, p0)
+        println('Gaussian Fit*', *parameters, z2, p2)
+        println('Round Scores', mean_shots, std_shots, z1, p1)
+        println('Half Scores\t', e5, u5, z5, p5)
+        #println('HIO Analysis', s4, v4, None, p4)
+        println('Monte Carlo\t', mean, dev, None, p4)
+        print('*based on tree search results')
         
         # Print the Results
+        """
         print('\n'.join([
             'Method\t\t\tMean\t\tSTDev\t\tZ-Score\t\tProbability\t\tExpected Days', 
             '-'*81,
@@ -724,6 +787,7 @@ class Course(list):
             f'Monte Carlo\t \t{mean:.2f}\t\t{dev:.3f}\t\t\t\t\t  {p3:.5f}\t\t\t{E(p3)}',
             '*based on Tree Search results'
         ]))
+        """
         
         # Print the Expected Shots
         f = sum(self.expected_shots[:9])
@@ -741,7 +805,8 @@ class Course(list):
             s = (sum(self.P(9, s, True, 18) * (s + score)**2 for s in range(9, sum(map(len, self.shot_probabilities[9:])) + 1)) - e**2)**0.5
             z = (params.z_score_target - e) / s
             p2 = norm.sf(-z)
-            print(f'\nProbability of Winning Today (Sitting on {score}): {100*p:.2f}%\nExpected Shots = {e:.3f} ± {s:.3f} (z = {z:.3f}, p = {100*p2:.3f}%)')
+            up = p * sum(self.variances[9:])**0.5
+            print(f'\nProbability of Winning Today (Sitting on {score}): {100*p:.2f}% ± {100*up:.3f}%\nExpected Shots = {e:.3f} ± {s:.3f} (z = {z:.3f}, p = {100*p2:.3f}%)')
         else:
             p = self.path_probability(self.data[-1])
             pr = p / product((max(hole) for hole in self.shot_probabilities))
@@ -779,12 +844,11 @@ class Course(list):
         self.all_plots()
         
         # Return the Data and the Plot Function
-        return probabilities, exact_probabilities
+        if return_probabilities:
+            return probabilities, exact_probabilities
 
 """-------------------- Run the Main Analysis --------------------"""
 
 # LOAD THE DATA
 course = Course()
-shot_probabilities = course.shot_probabilities
-expected_shots = course.expected_shots
 course.analyze()
