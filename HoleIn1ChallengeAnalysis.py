@@ -17,8 +17,8 @@ from numpy.random import random, normal
 class params:
     courses = ['bigputts', 'swingtime', 'teeaire', 'swingtime waukesha', 'gastraus', 'bigputts waukesha']
     dataset = courses[-1]
+    warmup_days = 2 #  how many days of data at the start of the challenge should be ignored as "warm up"
     use_historical = 0 # False/True/2 (only affects supported courses)
-    warmup_days = 1 #  how many days of data at the start of the challenge should be ignored as "warm up"
     weight_spread = 0.5
     use_weights = 0
     min_HI1_probability = 0
@@ -46,7 +46,7 @@ def variance(P:list, X:list = 1):
     
     return E - E2
 
-def gaussian(x, mu:float, sigma:float):
+def gaussian(x, mu:float = 0, sigma:float = 1):
     return np.exp(-0.5 * ((x - mu)/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
 
 def quadratic(a:float, b:float, c:float):
@@ -87,6 +87,10 @@ class Round(list):
         score = ''
         if not front:
             scores = ','.join(map(str, self)) + ' Incomplete'
+        elif 9 < len(self) < 18:
+            back = ','.join(map(str, (s for s in self[9:])))
+            scores = f"{front} {back}"
+            score = f" ({self.front} + {sum(self[9:])} = {sum(self)})"
         elif not back:
             scores = front
             score = f' ({self.front})'
@@ -224,8 +228,8 @@ class Course(list):
             return ''.join([
                 f"{self.course} : [\n\t",
                 ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
-                ',\n\t',
-                '-'*(45 + len(self[-1].name)),
+                '\n\t',
+                '-'*(59 + len(self[-1].name)),
                 '\n]'
             ])
         else:
@@ -233,7 +237,7 @@ class Course(list):
                 f"{self.course} : [\n\t",
                 ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
                 ',\n\t',
-                '-'*(45 + len(self[self.warmup_days - 1].name)),
+                '-'*(59 + len(self[self.warmup_days - 1].name)),
                 '\n\t',
                 ',\n\t'.join(str(r) for r in self[self.warmup_days:]),
                 '\n]'
