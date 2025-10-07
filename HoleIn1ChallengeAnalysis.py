@@ -97,7 +97,7 @@ class Round(list):
         else:
             scores = ', '.join((front, back))
             score = f" : {self.front} + {self.back} = {self.score}"
-        return f"[Day {self.name}: {scores}{score}]"
+        return f"[Day {self.name} : {scores}{score}]"
 
 class Course(list):
     """Object for Storing All Data for a Particular Course, and Doing Probability Calculations/Analysis, and Making Plots"""
@@ -114,8 +114,6 @@ class Course(list):
         
         # Other Attributes
         self._cache = {} # cache for computing the probability tree
-        self._hits = 0
-        self._misses = 0
         
         # Pre-Processing
         self.days = len(self.data)
@@ -209,7 +207,7 @@ class Course(list):
             for hole in self.shot_probabilities:
                 if hole[0] < params.min_HI1_probability:
                     # Adjust the Hole-In-1 Probability
-                    hole[0] = params.min_HI1_probability * 1 / (1 - params.min_HI1_probability*len(hole))
+                    hole[0] = params.min_HI1_probability / (1 - params.min_HI1_probability*len(hole))
                     
                     # Normalize the Probability Distribution for the Hole
                     s = sum(hole)
@@ -229,7 +227,7 @@ class Course(list):
                 f"{self.course} : [\n\t",
                 ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
                 '\n\t',
-                '-'*(59 + len(self[-1].name)),
+                '-'*(60 + len(self[-1].name)),
                 '\n]'
             ])
         else:
@@ -237,7 +235,7 @@ class Course(list):
                 f"{self.course} : [\n\t",
                 ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
                 ',\n\t',
-                '-'*(59 + len(self[self.warmup_days - 1].name)),
+                '-'*(60 + len(self[self.warmup_days - 1].name)),
                 '\n\t',
                 ',\n\t'.join(str(r) for r in self[self.warmup_days:]),
                 '\n]'
@@ -268,9 +266,37 @@ class Course(list):
     
     """-------------------- ANALYSIS --------------------"""
     
-    def P(self, hole:int = 0, shots:int = params.target, exact:bool = False, end:int = 18, return_uncertainty:bool = False, front:int = None):
+    def P(self, hole:int = 0, shots:int = params.target, exact:bool = False, end:int = 18, return_uncertainty:bool = False, front = None):
         """Estimate the Likelihood of Beating the Target by Trying All Possible Options
         
+        PARAMETERS
+        ----------
+            hole : int = 0
+                the starting hole (0-indexed)
+            shots : int = 29
+                the total number of shots for the stretch of holes
+            exact : bool = False
+                when true, returns P(shots == <shots>),
+                when false, returns P(shots <= <shots>)
+            end : int = 18
+                the maximum hole index to include +1. The range 
+                of hole indices included is [hole, end), similar 
+                to the range() method, or other native python methods.
+            return_uncertainty : bool = False
+                when True, an uncertainty estimate will be computed 
+                and returned alongside the probability.
+            front : int, list, Round = None
+                When <front> is an integer, the probability for completing 
+                the back 9 holes in <shots> - <front> shots is computed.
+                When <front> is a list or a Round, the probability for 
+                completing the last 18 - len(front) holes in 
+                <shots> - sum(<front>) shots is computed. In either case, 
+                this is equivalent to using course.P_success_given_front() 
+                or course.P_success_given_partial() depending on the type.
+        
+        
+        NOTES
+        -----
         THIS IS THE MAIN METHOD FOR MY ANALYSIS 
         
         It recursively searches the entire probability tree to figure out the probability they'll complete 
@@ -300,8 +326,8 @@ class Course(list):
         
         This method is cached to improve speed, and prunes where possible (i.e. if a computation is easily 
         known to result in 0 contribution to the final result it is skipped). The cache's hit rate isn't 
-        that high when it first computes the tree, but without caching this computation takes a very long 
-        time to complete (and with it it's almost instantaneous, running in under 1ms on my computer).
+        that high when it first computes the tree, but due to transposition this computation takes a very 
+        long time to complete without caching (and with it it's almost instantaneous with caching).
         """
         
         # Check the Requested Result, and Check the Cache, Reusing Computations Whenever Makes Sense and is Possible
@@ -309,20 +335,21 @@ class Course(list):
         if type(front) == int:
             # Return the Probability of Getting the Target Score Given the Actual Score on the Front 9
             return self.P(9, shots - front, exact, end, return_uncertainty, None)
-        elif type(front) == list:
+        elif type(front) in (Round, list):
             # Return the Probability of Getting the Target Score Given the Actual First n Holes
             return self.P(len(front), shots - sum(front), exact, end, return_uncertainty, None)
+        elif front == True and len(self) > 0 and len(self[-1]) > 0:
+            # Use the Current Day's Partial Round
+            return self.P(hole, shots, exact, end, return_uncertainty, self[-1])
+        elif front != None:
+            raise TypeError(f"Unrecognized Type for <front>: '{type(front)}'")
         if return_uncertainty:
             # Compute both the Probability, and the Uncertainty of that Probability, and Return Both
             p = self.P(hole, shots, exact, end, False)
             u = p * sum(self.variances[hole:end])**0.5
             return p, u
-        elif state in self._cache:
-            # Update that the Cache was Hit
-            self._hits += 1
-        else:
+        elif state not in self._cache:
             # Update that the Cache wasn't Hit, and Compute the Result by Case
-            self._misses += 1
             if shots < end - hole:
                 # base case: only getting holes-in-one is no longer good enough, so the probability is 0
                 self._cache[state] = 0
