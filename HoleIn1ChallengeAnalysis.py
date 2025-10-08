@@ -122,8 +122,6 @@ class Course(list):
         self.scores_by_half = ([r.front for r in self if r.completion&1], [r.back for r in self if r.completion&2])
         self.min_score = int(np.min(np.sum(self.data, axis = 1)))
         self.max_score = int(np.max(np.sum(self.data, axis = 1)))
-        self.min_score_possible = int(np.sum(np.min(self.data, axis = 0)))
-        self.max_score_possible = int(np.sum(np.max(self.data, axis = 0)))
         
         # Tally the Shots
         self.weights = None
@@ -216,6 +214,15 @@ class Course(list):
         
         # Compute the Expected Number of Shots
         self.expected_shots = [sum(p*t for t, p in enumerate(hole, start = 1)) for h, hole in enumerate(self.shot_probabilities, start = 1)]
+        
+        # Compute the Minimum Required Shots to Complete the Course from Each Hole (helps optimize pruning in probability calculations)
+        self.min_shots_required = [min(s for s, p in enumerate(hole, start = 1) if p > 0) for hole in self.shot_probabilities]
+        for i in range(len(self.min_shots_required) - 1, 0, -1):
+            self.min_shots_required[i - 1] += self.min_shots_required[i]
+        self.min_shots_required.append(0)
+        self.min_score_possible = self.min_shots_required[0]
+        self.max_score_possible = sum(max(s for s, p in enumerate(hole, start = 1) if p > 0) for hole in self.shot_probabilities)
+        self.total_paths = product(sum(p > 0 for p in hole) for hole in self.shot_probabilities)
     
     def __repr__(self) -> str:
         if len(self) == 0:
@@ -349,7 +356,7 @@ class Course(list):
             u = p * sum(self.variances[hole:end])**0.5
             return p, u
         elif state not in self._cache:
-            # Update that the Cache wasn't Hit, and Compute the Result by Case
+            # Compute the Result by Case
             if shots < end - hole:
                 # base case: only getting holes-in-one is no longer good enough, so the probability is 0
                 self._cache[state] = 0
@@ -596,7 +603,7 @@ class Course(list):
         plt.ylim(1, round(2 * max(y) + 1) / 2)
         plt.show()
 
-    def plot_halves(self, return_data:bool = False, print_results:bool = True):
+    def plot_halves(self, return_data:bool = False, print_results:bool = True, include_histogram:bool = False):
         """Plots the Likelihood of Various Scores on Either the Front 9 or the Back 9"""
         
         # Compute the Max Score for Either Half
@@ -607,10 +614,22 @@ class Course(list):
         x = list(range(9, max_score + 2))
         P = [[self.P(start, s, True, end) for s in x] for start, end in endpoints]
         
+        # Get the Histogram Data
+        F = Counter(r.front for r in self if r.completion&1)
+        B = Counter(r.back for r in self if r.complete)
+        FS = sum(F.values())
+        BS = sum(B.values())
+        F = [F[X] / FS for X in x]
+        B = [B[X] / BS for X in x]
+        
         # Plot the Results
         fig, ax = plt.subplots()
-        for i, (label, color) in enumerate(zip(['Front 9', 'Back 9'], ['violet', 'teal'])):
+        colors = ['violet', 'teal']
+        for i, (label, color) in enumerate(zip(['Front 9', 'Back 9'], colors)):
             plt.plot(x, P[i], color = color, label = label)
+        if include_histogram:
+            for H, color in zip([F, B], colors):
+                plt.bar(x, H, width = 0.8, color = color, alpha = 0.2)
         plt.xlabel("Score")
         plt.ylabel('Likelihood')
         plt.legend()
