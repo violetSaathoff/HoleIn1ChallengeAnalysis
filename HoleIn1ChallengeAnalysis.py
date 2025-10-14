@@ -104,10 +104,25 @@ class Course(list):
     def __init__(self, course:str = params.dataset):
         """Load the Data for the Specified Course ('course' must be in the 'courses' list)"""
         # Load the Data
-        self.course = params.courses[course] if type(course) == int else course
-        self.warmup_days = params.warmup_days
-        self.index = params.courses.index(self.course)
-        self.extend(map(Round, readlines(f"{self.course}.txt")))
+        if type(course) in (str, int):
+            self.course = params.courses[course] if type(course) == int else course
+            self.warmup_days = params.warmup_days
+            self.index = params.courses.index(self.course) 
+            self.extend(map(Round, readlines(f"{self.course}.txt")))
+        elif type(course) == Course:
+            self.course = course.course
+            self.warmup_days = params.warmup_days
+            self.index = course.index
+            self.extend(course)
+        elif type(course) == list:
+            self.course = None
+            self.warmup_days = params.warmup_days
+            self.index = None
+            if len(course):
+                if type(course[0]) == Round:
+                    self.extend(course)
+                else:
+                    self.extend(map(Round, course))
         self.used = self[params.warmup_days:]
         self.current_day_front_half = self[-1] if self and len(self[-1]) == 9 else []
         self.data = np.array([r for r in self.used if r.complete], int)
@@ -386,6 +401,24 @@ class Course(list):
         else:
             return 1/p
     
+    def S(self, start:int = 0, end:int = 18, return_uncertainty:bool = True) -> tuple:
+        """Compute the Average Score After the Specified Range as well as the Standard Deviation (and uncertainties on both if requested)"""
+        # Collect the Probability Data
+        P = []
+        s = 0
+        while not P or P[-1][0] > 0 or s <= self.min_score_possible:
+            P.append(self.P(start, s, True, end, True))
+            s += 1
+        
+        # Compute the Expected Number of Shots
+        E = sum(p*s for s, (p, _) in enumerate(P)) #  sum(self.expected_shots[start:end])
+        SE = (sum(p*s**2 for s, (p, _) in enumerate(P)) - E**2)**0.5
+        uE = sum(up**2 for s, (p, up) in enumerate(P) if p > 0)**0.5
+        uSE = SE * uE / E
+        
+        # Return the Requested Result
+        return ((E, uE), (SE, uSE)) if return_uncertainty else (E, SE)
+    
     def P_success_given_front(self, front_score:int, total_shots:int = params.target, exact:bool = False, end:int = 18, return_uncertainty:bool = True):
         """Compute the Probability of Completing the Challenge Given a Score on the Front 9"""
         return self.P(9, total_shots - front_score, exact, end, return_uncertainty)
@@ -615,12 +648,15 @@ class Course(list):
         P = [[self.P(start, s, True, end) for s in x] for start, end in endpoints]
         
         # Get the Histogram Data
-        F = Counter(r.front for r in self if r.completion&1)
-        B = Counter(r.back for r in self if r.complete)
-        FS = sum(F.values())
-        BS = sum(B.values())
-        F = [F[X] / FS for X in x]
-        B = [B[X] / BS for X in x]
+        F = []
+        B = []
+        if include_histogram:
+            F = Counter(r.front for r in self if r.completion&1)
+            B = Counter(r.back for r in self if r.complete)
+            FS = sum(F.values())
+            BS = sum(B.values())
+            F = [F[X] / FS for X in x]
+            B = [B[X] / BS for X in x]
         
         # Plot the Results
         fig, ax = plt.subplots()
@@ -718,14 +754,14 @@ class Course(list):
         # Plot the Result
         fix, ax = plt.subplots()
         #plt.plot([E, E], [0, max(P)], '--', color = 'lightgrey', label = f'Expected Shots = {E:.2f}')
-        plt.plot(S, P, color = 'violet', label = f'After the First {start} Holes' if start else 'P(score == x)', zorder = 100)
-        if include_full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'Before the First Hole', zorder = 99)
+        plt.plot(S, P, color = 'violet', label = f'P(score == x | front = {shots})' if start else 'P(score == x)', zorder = 100)
+        if include_full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'P(score == x)', zorder = 99)
         if include_histogram: plt.bar(S, [counts[s] for s in S], color = 'lightpink', alpha = 0.7, zorder = 96)
         if include_cumulative:
             plt.plot(S, C, '-.', color = 'teal', label = 'P(score <= x)', zorder = 98)
             if include_full_round: plt.plot(S, C2, '-.', color = 'lightgrey', zorder = 97)
-        plt.xlabel('Total Shots' + f'\n(sitting on {shots} after {start} holes)'*bool(shots or start))
-        plt.ylabel('Likelihood' if include_cumulative else 'Likelihood : P(score == x)')
+        plt.xlabel('Total Shots')
+        plt.ylabel('Likelihood')
         if include_full_round or include_cumulative: plt.legend()
         plt.show()
         
@@ -766,8 +802,39 @@ class Course(list):
         
         # Show the Figure
         plt.show()
+    
+    def plot_expected_shots_over_time(self, first:int = None, sigma:float = 1, return_results:bool = False):
+        """Plot How the Expected Number of Days has Changed as More Data was Added to the Data Set"""
+        # Get the Data
+        X = []
+        Y = []
+        UY = []
+        Y1 = []
+        Y2 = []
+        for i in range(first if first else max(1, self.warmup_days), len(self)):
+            try:
+                y, uy = Course(self[:i]).E()
+                X.append(i)
+                Y.append(y)
+                UY.append(uy)
+                Y1.append(y - sigma * uy)
+                Y2.append(y + sigma * uy)
+            except: pass
         
+        # Plot the Results
+        plt.fill_between(X, Y1, Y2, color = 'violet', alpha = 0.2)
+        plt.plot(X, Y, color = 'violet')
+        plt.xlabel('Days of Data')
+        plt.ylabel('Expected Days to Complete Challenge')
+        if len(X) < 20: plt.xticks(X, X)
+        plt.ylim(bottom = 0)
+        plt.show()
+        
+        # Return the Results
+        if return_results: return list(zip(X, Y, UY))
+    
     def all_plots(self, score_histogram:bool = False, round_shots:list = 0):
+        #self.plot_expected_shots_over_time()
         self.plot_score_distribution(include_histogram = score_histogram, include_cumulative = True)
         # rank_holes() # hole ranking happens in self.plot_hole_probabilities()
         # plot_expected_shots() # expected shots are included in self.plot_hole_probabilities()
