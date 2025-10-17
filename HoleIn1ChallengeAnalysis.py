@@ -129,7 +129,27 @@ class Course(list):
         
         # Other Attributes
         self._cache = {} # cache for computing the probability tree
+        self.days = None
+        self.total_days = None
+        self.scores = None
+        self.scores_by_half = None
+        self.min_score = None
+        self.max_score = None
+        self.weights = None
+        self.counts = None
+        self.shot_probabilities = None
+        self.variances = None
+        self.variance = None
+        self.expected_shots = None
+        self.min_shots_required = None
+        self.min_score_possible = None
+        self.max_score_possible = None
+        self.total_paths = None
         
+        # Compute the Probabilities
+        self._compute_probabilities()
+        
+    def _compute_probabilities(self):
         # Pre-Processing
         self.days = len(self.data)
         self.total_days = len(self)
@@ -803,7 +823,7 @@ class Course(list):
         # Show the Figure
         plt.show()
     
-    def plot_expected_shots_over_time(self, first:int = None, sigma:float = 1, return_results:bool = False):
+    def plot_expected_days(self, first:int = None, sigma:float = 1, return_results:bool = False, include_actual_days:bool = True):
         """Plot How the Expected Number of Days has Changed as More Data was Added to the Data Set"""
         # Get the Data
         X = []
@@ -811,7 +831,9 @@ class Course(list):
         UY = []
         Y1 = []
         Y2 = []
-        for i in range(first if first else max(1, self.warmup_days), len(self)):
+        Y3 = []
+        Y4 = []
+        for i in range(first if first else max(1, self.warmup_days), len(self) + 1):
             try:
                 y, uy = Course(self[:i]).E()
                 X.append(i)
@@ -819,10 +841,17 @@ class Course(list):
                 UY.append(uy)
                 Y1.append(y - sigma * uy)
                 Y2.append(y + sigma * uy)
+                Y3.append(y - sigma * uy * i**0.5)
+                Y4.append(y + sigma * uy * i**0.5)
             except: pass
         
         # Plot the Results
-        plt.fill_between(X, Y1, Y2, color = 'violet', alpha = 0.2)
+        plt.figure()
+        if include_actual_days and any(r.score <= params.target for r in self):
+            days = next(d for d, r in enumerate(self, start = 1) if r.score <= params.target)
+            plt.plot(X, [days]*len(X), '-.', color = 'lightgrey')
+        plt.fill_between(X, Y1, Y2, color = 'violet', alpha = 0.1)
+        plt.fill_between(X, Y3, Y4, color = 'violet', alpha = 0.2)
         plt.plot(X, Y, color = 'violet')
         plt.xlabel('Days of Data')
         plt.ylabel('Expected Days to Complete Challenge')
@@ -834,7 +863,7 @@ class Course(list):
         if return_results: return list(zip(X, Y, UY))
     
     def all_plots(self, score_histogram:bool = False, round_shots:list = 0):
-        #self.plot_expected_shots_over_time()
+        #self.plot_expected_days()
         self.plot_score_distribution(include_histogram = score_histogram, include_cumulative = True)
         # rank_holes() # hole ranking happens in self.plot_hole_probabilities()
         # plot_expected_shots() # expected shots are included in self.plot_hole_probabilities()
