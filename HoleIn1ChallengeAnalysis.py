@@ -219,6 +219,8 @@ class Course(list):
             after = params.bpw3pw
             self.shot_probabilities = []
             for P, m, Q, n in zip(two_man.shot_probabilities, two_man.sums, three_man.shot_probabilities, three_man.sums):
+                P.extend([0]*(len(Q) - len(P)))
+                Q.extend([0]*(len(P) - len(Q)))
                 t = before*m + after*n
                 self.shot_probabilities.append([(before*p*m + after*q*n) / t for p, q in zip(P, Q)])
         else:
