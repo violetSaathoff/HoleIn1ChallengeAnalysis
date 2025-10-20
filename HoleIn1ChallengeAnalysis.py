@@ -26,6 +26,8 @@ class params:
     z_score_target = target + 0.5
     use_weights = use_weights and weight_spread > 0
     bp18 = False # at big putts, when false, use hole 1 for hole 18, when true use the special hole for hole 18 (challenge days 11+)
+    bpw3p = True # at big putts waukesha, they added a 3rd player on day 17, this variable controls if we're analyzing for a 3-man scramble or a 2-man scramble
+    bpw3pw = 0.5 # weighting for big putts waukesha data after day 17 vs before day 17
 
 """-------------------- UTILITIES --------------------"""
 # Compute the Product of an Iterable
@@ -137,6 +139,7 @@ class Course(list):
         self.max_score = None
         self.weights = None
         self.counts = None
+        self.sums = None
         self.shot_probabilities = None
         self.variances = None
         self.variance = None
@@ -153,16 +156,19 @@ class Course(list):
         # Pre-Processing
         self.days = len(self.data)
         self.total_days = len(self)
-        self.scores = [r.score for r in self if r.complete]
-        self.scores_by_half = ([r.front for r in self if r.completion&1], [r.back for r in self if r.completion&2])
-        self.min_score = int(np.min(np.sum(self.data, axis = 1)))
-        self.max_score = int(np.max(np.sum(self.data, axis = 1)))
+        self.scores = [r.score for r in self[self.warmup_days:] if r.complete]
+        self.scores_by_half = (
+            [r.front for r in self[self.warmup_days:] if r.completion&1], 
+            [r.back for r in self[self.warmup_days:] if r.completion&2]
+        )
+        self.min_score = int(np.min(np.sum(self.data, axis = 1))) if len(self.data.shape) > 1 else sum(self.data)
+        self.max_score = int(np.max(np.sum(self.data, axis = 1))) if len(self.data.shape) > 1 else sum(self.data)
         
         # Tally the Shots
         self.weights = None
         if not params.use_weights:
             # Weight all days the same
-            self.counts = [Counter(map(int, self.data[:,i])) for i in range(18)]
+            self.counts = [Counter(map(int, self.data[:,i])) for i in range(18)] if len(self.data.shape) > 1 else [Counter([x]) for x in self.data]
             for d, s in enumerate(self.current_day_front_half):
                 self.counts[d][s] += 1
             
@@ -200,8 +206,23 @@ class Course(list):
                 self.counts[17] = counts.copy()
         
         # Compute the Shot Probabilities
-        sums = [sum(hole.values()) for hole in self.counts]
-        self.shot_probabilities = [[hole[s] / n for s in range(1, max(hole.keys()) + 1)] for hole, n in zip(self.counts, sums)]
+        self.sums = [sum(hole.values()) for hole in self.counts]
+        if params.dataset == 'bigputts waukesha' and len(self) >= 17 and int(self[0].name) == 1:
+            # Analyze the Portions of the Data Separately
+            two_man = Course(self[:16])
+            params.warmup_days = 0
+            three_man = Course(self[16:])
+            params.warmup_days = self.warmup_days
+            
+            # Combine the Results
+            before = 1 - params.bpw3pw
+            after = params.bpw3pw
+            self.shot_probabilities = []
+            for P, m, Q, n in zip(two_man.shot_probabilities, two_man.sums, three_man.shot_probabilities, three_man.sums):
+                t = before*m + after*n
+                self.shot_probabilities.append([(before*p*m + after*q*n) / t for p, q in zip(P, Q)])
+        else:
+            self.shot_probabilities = [[hole[s] / n for s in range(1, max(hole.keys()) + 1)] for hole, n in zip(self.counts, self.sums)]
         
         # Factor In Historical Data
         if params.use_historical and params.dataset in ('gastraus'):
@@ -230,6 +251,14 @@ class Course(list):
                     k = (1 - Q[0])/sum(Q[1:])
                     for i in range(1, len(Q)):
                         Q[i] *= k
+        
+        # Big Putts Waukesha is a 3-Man Scramble After Day 17
+        if params.dataset == 'bigputts waukesha' and params.bpw3p and len(self) < 17 and int(self[0].name) == 1:
+            # Conver to 3-Man Scramble Probabilities
+            self.shot_probabilities = self.estimate_three_player_probabilities(False)
+        elif params.dataset == 'bigputts waukesha' and not params.bpw3p and len(self) > 0 and int(self[0].name) == 17:
+            # Convert to 2-Man Scramble Probabilities
+            pass # TODO: implement this
         
         # Compute the Variance for Each Hole
         self.variances = [1/sum(c.values())**2 for c in self.counts]
@@ -305,6 +334,31 @@ class Course(list):
             self.plot_hole_probabilities(P_single)
         
         return P_single
+    
+    def estimate_two_player_probabilities(self, plot:bool = True):
+        """Estimate the Shot Probabilities for a 2-Man Scramble from 3-Man Scramble Results"""
+        raise NotImplementedError()
+    
+    def estimate_three_player_probabilities(self, plot:bool = True):
+        """Estimate the Shot Probabilities for a 3-Man Scramble from 2-Man Scramble Results"""
+        # Estimate the Single-Player Probabilities
+        P_single = self.estimate_single_player_probabilities(False)
+        
+        # Compute the 3-Man Probabilities
+        P_triple = []
+        for hole in P_single:
+            P_triple.append([0]*len(hole))
+            for i in range(len(hole)):
+                for j in range(len(hole)):
+                    for k in range(len(hole)):
+                        P_triple[-1][min(i, j, k)] += hole[i] * hole[j] * hole[k]
+        
+        # Plot the Results
+        if plot:
+            self.plot_hole_probabilities(P_triple)
+        
+        # Return the Results
+        return P_triple
     
     """-------------------- ANALYSIS --------------------"""
     
