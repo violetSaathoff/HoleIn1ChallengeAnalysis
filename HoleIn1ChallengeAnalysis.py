@@ -27,6 +27,17 @@ class params:
     use_weights = use_weights and weight_spread > 0
     bp18 = False # at big putts, when false, use hole 1 for hole 18, when true use the special hole for hole 18 (challenge days 11+)
     bpw18 = True # at big putts waukesha, they started using a random hole for hole 18 on day 18
+    
+    # Determine Which Holes are Used for Hole 18
+    hole18 = []
+    if dataset == 'bigputts':
+        hole18.append(18 if bp18 else 1)
+    elif dataset == 'bigputts waukesha':
+        hole18.append(1)
+        if bpw18: hole18.extend(list(range(1, 18)))
+    else:
+        hole18.append(18)
+    hole18 = [h - 1 for h in hole18] #  convert to indices
 
 """-------------------- UTILITIES --------------------"""
 # Compute the Product of an Iterable
@@ -166,55 +177,20 @@ class Course(list):
         self.max_score = int(np.max(np.sum(self.data, axis = 1))) if len(self.data.shape) > 1 else sum(self.data)
         
         # Tally the Shots
-        self.weights = None
-        if not params.use_weights:
-            # Weight all days the same
-            self.counts = [Counter() for i in range(18)]
-            for r in self.used:
-                for h, s in enumerate(r):
-                    h = r.hole_18_index if h == 17 else h
-                    self.counts[h][s] += 1
-            
-            # Update Things for Specific Courses (e.g. Big Putts courses tend to reuse hole 1 as hole 18)
-            if params.dataset == 'bigputts':
-                self.counts[0] = Counter([r[0] for r in self.used] + [r[17] for i, r in enumerate(self) if i >= params.warmup_days and (i < 10 or i >= 24)])
-                self.counts[-1] = Counter([r[17] for r in self.used[max(params.warmup_days, 10):24]]) if params.bp18 else self.counts[0].copy()
-            elif params.dataset == 'bigputts waukesha':
-                self.counts[0] = Counter([r[0] for r in self.used if len(r) > 0] + [r[17] for r in self.used if len(r) == 18])
-                self.counts[-1] = self.counts[0].copy()
-        else:
-            # weight more recent days more
-            self.counts = [defaultdict(float) for i in range(18)]
-            self.weights = np.linspace(1 - params.weight_spread, 1 + params.weight_spread, len(self.used))
-            for r, w in zip(self.used, self.weights):  #  round, weight
-                for h, s in enumerate(r):  #  hole, score
-                    h = r.hole_18_index if h == 17 else h
-                    self.counts[h][s] += w
-            
-            # Update Things for Specific Courses
-            if params.dataset == 'bigputts':
-                self.counts[0] = defaultdict(float)
-                self.counts[17] = defaultdict(float)
-                for i, (r, w) in zip(self.used, start = params.warmup_days):
-                    self.counts[0][r[0]] += w  #  hole 1 always counts towards hole 1
-                    if i < 10 or i >= 24: self.counts[0][r[17]] += w  #  hole 18 sometimes counts towards hole 1
-                    elif params.bp18: self.counts[17][r[17]] += w  #  hole 18 sometimes counts towards itself
-                if not params.bp18: self.counts[17] = self.counts[0].copy()  #  hole 18 = hole 1 based on the input parameters
-            elif params.dataset == 'bigputts waukesha':
-                # Combine Holes 1 and 18 Directly
-                counts = defaultdict(float)
-                for r, w in zip(self.used, self.weights):
-                    counts[r[0]] += w
-                    if int(r.day) < 18: counts[r[17]] += w
-                self.counts[0] = counts.copy()
-                self.counts[17] = counts.copy()
+        self.weights = np.linspace(1 - params.weight_spread, 1 + params.weight_spread, len(self.used)) if params.use_weights else [1]*len(self.used)
+        self.counts = [defaultdict(float) if params.use_weights else Counter() for i in range(18)]
+        for r, w in zip(self.used, self.weights):  #  round, weight
+            for h, s in enumerate(r):  #  hole, score
+                h = r.hole_18_index if h == 17 else h
+                self.counts[h][s] += w
         
-        # Big Putts Waukesha Uses a Random Hole for Hole 18 Starting on Day 18
-        if params.dataset == 'bigputts waukesha' and params.bpw18:
-            self.counts[17] = Counter()
-            for counts in self.counts[:17]:
-                for s, c in counts.items():
-                    self.counts[17][s] += c
+        # Compute the (Effective) Counts for Hole 18
+        if params.hole18 != [17]:
+            hole18 = defaultdict(float) if params.use_weights else Counter()
+            for h in params.hole18:
+                for s, c in self.counts[h].items():
+                    hole18[s] += c
+            self.counts[17] = hole18
         
         # Compute the Shot Probabilities
         self.sums = [sum(hole.values()) for hole in self.counts]
@@ -250,7 +226,7 @@ class Course(list):
         
         # Compute the Variance for Each Hole
         self.variances = [1/sum(c.values())**2 for c in self.counts]
-        if params.dataset == 'bigputts waukesha' and params.bpw18: self.variances[17] = sum(self.variances[:17])/17
+        if params.hole18 != [17]: self.variances[17] = sum(self.variances[h] for h in params.hole18) / len(params.hole18)
         self.variance = sum(self.variances)
         
         # Assert a Minimum Hole-In-One Probability
