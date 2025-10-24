@@ -76,6 +76,8 @@ class Round(list):
         self.name, scores = line.split(' : ')
         scores = scores.replace(' ', '').split(',')
         self.extend(int(s) for s in scores if s.isdigit())
+        self.hole_18 = self.pop() if len(self) == 19 else None
+        self.hole_18_index = self.hole_18 - 1 if self.hole_18 != None else 17
         self.front = sum(self[:9]) if len(self) >= 9 else None
         self.back = sum(self[9:]) if len(self) == 18 else None
         self.completion = bool(self.front) + 2*bool(self.back)
@@ -167,9 +169,11 @@ class Course(list):
         self.weights = None
         if not params.use_weights:
             # Weight all days the same
-            self.counts = [Counter(map(int, self.data[:,i])) for i in range(18)] if len(self.data.shape) > 1 else [Counter([x]) for x in self.data]
-            for d, s in enumerate(self.current_day_front_half):
-                self.counts[d][s] += 1
+            self.counts = [Counter() for i in range(18)]
+            for r in self.used:
+                for h, s in enumerate(r):
+                    h = r.hole_18_index if h == 17 else h
+                    self.counts[h][s] += 1
             
             # Update Things for Specific Courses (e.g. Big Putts courses tend to reuse hole 1 as hole 18)
             if params.dataset == 'bigputts':
@@ -184,6 +188,7 @@ class Course(list):
             self.weights = np.linspace(1 - params.weight_spread, 1 + params.weight_spread, len(self.used))
             for r, w in zip(self.used, self.weights):  #  round, weight
                 for h, s in enumerate(r):  #  hole, score
+                    h = r.hole_18_index if h == 17 else h
                     self.counts[h][s] += w
             
             # Update Things for Specific Courses
@@ -790,7 +795,7 @@ class Course(list):
         include_full_round = include_full_round and (shots > 0 or start > 0) and (not include_histogram or 2 in (include_full_round, include_histogram))
         
         # Compute a List of All Possible Numbers of Shots Remaining, Then Compute the Probability for Each
-        S = list(range(shots + end - start, shots + 2 + sum(map(len, self.shot_probabilities[start:]))))
+        S = list(range(shots + end - start - 1, shots + 2 + sum(map(len, self.shot_probabilities[start:]))))
         P = [self.P(start, s - shots, True, end) for s in S]
         P2 = [self.P(0, s, True, end) for s in S] if include_full_round else []
         
@@ -885,7 +890,7 @@ class Course(list):
         
         # Plot the Results
         plt.figure()
-        days = next((d for d, r in enumerate(self, start = 1) if r.score != None and r.score <= params.target), default = None) if include_actual_days else None
+        days = next((d for d, r in enumerate(self, start = 1) if r.score != None and r.score <= params.target), None) if include_actual_days else None
         if days != None:
             plt.plot(X, [days]*len(X), '-.', color = 'lightgrey')
         plt.fill_between(X, Y1, Y2, color = 'violet', alpha = 0.1)
@@ -1017,29 +1022,9 @@ class Course(list):
             r = np.corrcoef(list(range(len(self.scores))), self.scores)
             print(f'\nTotal Shots vs Time Correlation: {r[0,1]:.3f}')
         
-        # Print Some Notes on the Methodology
-        if False:
-            print('\n'.join([ 
-                '',
-                'The main method is the Tree Search method, which uses the estimated shot probabilities to compute the ',
-                'likelihood of every possible round. These results can be used in a few other ways though. First, is ',
-                'the Tree Search*, where the probabilities are computed for exact scores using the Tree Search, and ',
-                'then expectation values are calculated for the round score and its variance, which are then used to ',
-                'compute a Z-score, which is converted to a probability using a 1-tailed test. The Gaussian Fit method ',
-                'works very similarly, but instead of computing expectation values, the exactt probabilities are fit to ',
-                'a Gaussian probability density function, resulting in slightly different estimates for the mean and ',
-                'standard deviation. The Round Scores method, on the other hand, just computes the mean and standard ',
-                'deviation of the round scores directly, and then uses the same 1-tailed test to estimate the probability. ',
-                'Lastly, the Monte Carlo method simulates 1000 rounds where each hole is approximated with a Gaussian fit. ',
-                'It is possible to change the parameters of the Monte Carlo simulation to instead use the measured shot ',
-                'probabilities, and it is possible to run an arbitrarily large number of simulated rounds, but I think ',
-                'this is a decent starting place (which doesn\'t take too much time to run) - though repeated runs do ',
-                'give fairly different results. The HIO Analysis tries to estimate a distribution for "how likely are ',
-                'they to shoot X 1\'s in a round?" (and for 2\'s, 3\'s, etc.), and then tries all combinations of those ',
-                'to estimate the probability they shoot a combination which breaks 30. This method currently suffers from ',
-                '\'gaps\' in the data, and does need to use a fudge factor to produce sensible results for the mean and ',
-                'standard deviation; which does call into question the validity of it\'s main result.'
-            ]))
+        if self.current_day_front_half and self.min_score > params.target + 1:
+            Ppb, Upb = course.P(shots = self.min_score - 1, front = self.current_day_front_half, return_uncertainty = True)
+            print(f'\nLikelihood of a New Personal Best: {100 * Ppb:.2f}% ± {100 * Upb:.2f}%')
         
         # Make the Plots
         self.all_plots()
@@ -1050,6 +1035,6 @@ class Course(list):
 
 """-------------------- Run the Main Analysis --------------------"""
 
-# LOAD THE DATA
-course = Course()
-course.analyze()
+if __name__ == '__main__':
+    course = Course()  #  Load the Data
+    course.analyze()   #  Run the Main Analysis
