@@ -178,15 +178,15 @@ class Course(list):
         
         # Tally the Shots
         self.weights = np.linspace(1 - params.weight_spread, 1 + params.weight_spread, len(self.used)) if params.use_weights else [1]*len(self.used)
-        self.counts = [defaultdict(float) if params.use_weights else Counter() for i in range(18)]
+        self.counts = [Counter() for i in range(18)]
         for r, w in zip(self.used, self.weights):  #  round, weight
             for h, s in enumerate(r):  #  hole, score
                 h = r.hole_18_index if h == 17 else h
                 self.counts[h][s] += w
         
-        # Compute the (Effective) Counts for Hole 18
+        # Compute the Effective Counts for Hole 18 if Necessary
         if params.hole18 != [17]:
-            hole18 = defaultdict(float) if params.use_weights else Counter()
+            hole18 = Counter()
             for h in params.hole18:
                 for s, c in self.counts[h].items():
                     hole18[s] += c
