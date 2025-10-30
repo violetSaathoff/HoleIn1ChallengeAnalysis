@@ -504,7 +504,7 @@ class Course(list):
         warning = None
         if gaussian:
             # Get the (Weighted) Probability Distributions for Each Hole
-            W = np.array([[w for _ in range(18)] for w in self.weights]) if type(self.weights) == np.ndarray else 1
+            W = np.array([[w for _ in range(18)] for w in self.weights[:len(self.data)]]) if type(self.weights) == np.ndarray else 1
             means = np.mean(self.data * W, 0)
             devs = np.std(self.data, 0)
             
@@ -765,15 +765,15 @@ class Course(list):
         # Return the Data
         return P
 
-    def plot_score_distribution(self, shots:int = 0, start:int = 0, end:int = 18, include_full_round:bool = True, include_histogram:bool = False, include_cumulative:bool = False):
+    def plot_score_distribution(self, shots:int = 0, start:int = 0, end:int = 18, full_round:bool = True, histogram:bool = False, cumulative:bool = False, returns:bool = False):
         """Plot the Expected Distribution of Scores Over the Run of Holes Specified"""
         # Update the include_full_round Flag
-        include_full_round = include_full_round and (shots > 0 or start > 0) and (not include_histogram or 2 in (include_full_round, include_histogram))
+        full_round = full_round and (shots > 0 or start > 0) and (not histogram or 2 in (full_round, histogram))
         
         # Compute a List of All Possible Numbers of Shots Remaining, Then Compute the Probability for Each
         S = list(range(shots + end - start - 1, shots + 2 + sum(map(len, self.shot_probabilities[start:]))))
         P = [self.P(start, s - shots, True, end) for s in S]
-        P2 = [self.P(0, s, True, end) for s in S] if include_full_round else []
+        P2 = [self.P(0, s, True, end) for s in S] if full_round else []
         
         # Get the Histogram Data
         counts = defaultdict(int, Counter(int(shots + s) for s in np.sum(self.data[:,start:end], 1)))
@@ -794,18 +794,18 @@ class Course(list):
         fix, ax = plt.subplots()
         #plt.plot([E, E], [0, max(P)], '--', color = 'lightgrey', label = f'Expected Shots = {E:.2f}')
         plt.plot(S, P, color = 'violet', label = f'P(score == x | front = {shots})' if start else 'P(score == x)', zorder = 100)
-        if include_full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'P(score == x)', zorder = 99)
-        if include_histogram: plt.bar(S, [counts[s] for s in S], color = 'lightpink', alpha = 0.7, zorder = 96)
-        if include_cumulative:
+        if full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'P(score == x)', zorder = 99)
+        if histogram: plt.bar(S, [counts[s] for s in S], color = 'lightpink', alpha = 0.7, zorder = 96)
+        if cumulative:
             plt.plot(S, C, '-.', color = 'teal', label = 'P(score <= x)', zorder = 98)
-            if include_full_round: plt.plot(S, C2, '-.', color = 'lightgrey', zorder = 97)
+            if full_round: plt.plot(S, C2, '-.', color = 'lightgrey', zorder = 97)
         plt.xlabel('Total Shots')
         plt.ylabel('Likelihood')
-        if include_full_round or include_cumulative: plt.legend()
+        if full_round or cumulative: plt.legend()
         plt.show()
         
         # Return the Data
-        return P
+        if returns: return P
     
     def plot_hole_probabilities(self, probabilities:list = None, ranked:bool = True, colors = ['violet', 'mediumorchid', 'purple', 'indigo', 'maroon', 'red'], width = 0.75):
         """Plot the Hole Probabilities as a Stacked Bar Plot"""
@@ -883,7 +883,7 @@ class Course(list):
     
     def all_plots(self, score_histogram:bool = False, round_shots:list = 0):
         #self.plot_expected_days()
-        self.plot_score_distribution(include_histogram = score_histogram, include_cumulative = True)
+        self.plot_score_distribution(histogram = score_histogram, cumulative = True)
         # rank_holes() # hole ranking happens in self.plot_hole_probabilities()
         # plot_expected_shots() # expected shots are included in self.plot_hole_probabilities()
         self.plot_halves(print_results = False)
@@ -919,8 +919,8 @@ class Course(list):
         # Do Gaussian Fits
         parameters, var = curve_fit(gaussian, np.array(range(0, len(exact_probabilities))), exact_probabilities)
         var = np.sqrt(np.diag(var))
-        mean_shots = np.mean(self.scores * (self.weights if type(self.weights) == np.ndarray else 1))
-        std_shots = np.std(self.scores)
+        mean_shots = np.mean(self.scores[self.warmup_days:] * (self.weights[:len(self.scores) - self.warmup_days] if type(self.weights) == np.ndarray else 1))
+        std_shots = np.std(self.scores[self.warmup_days:])
         
         # Mean/Dev of Scores by Half Analysis
         e5 = sum(np.mean(half) for half in self.scores_by_half)
