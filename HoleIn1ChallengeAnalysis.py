@@ -162,7 +162,7 @@ class Course(list):
         self.total_paths = None
         
         # Compute the Probabilities
-        self._compute_probabilities()
+        if len(self): self._compute_probabilities()
         
     def _compute_probabilities(self):
         # Pre-Processing
@@ -255,27 +255,9 @@ class Course(list):
     
     def __repr__(self) -> str:
         if len(self) == 0:
-            return f"{self.course} : []"
-        elif self.warmup_days == 0:
-            return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) for r in self) + '\n]'
-        elif len(self) < self.warmup_days:
-            return ''.join([
-                f"{self.course} : [\n\t",
-                ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
-                '\n\t',
-                '-'*(60 + len(self[-1].name)),
-                '\n]'
-            ])
+            return f"{self.course} : []"  #  this is very hard to hit lol
         else:
-            return ''.join([
-                f"{self.course} : [\n\t",
-                ',\n\t'.join(str(r) for r in self[:self.warmup_days]),
-                ',\n\t',
-                '-'*(60 + len(self[self.warmup_days - 1].name)),
-                '\n\t',
-                ',\n\t'.join(str(r) for r in self[self.warmup_days:]),
-                '\n]'
-            ])
+            return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) if r in self.used else str(r).replace('[', '(').replace(']', ')') for r in self) + '\n]'
     
     def path_probability(self, path:list, start:int = 0) -> float:
         """Compute the Likelihood of a Particular Round"""
