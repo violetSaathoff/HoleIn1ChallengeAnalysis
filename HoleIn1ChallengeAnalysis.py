@@ -392,9 +392,10 @@ class Course(list):
         """
         
         # Check the Requested Result, and Check the Cache, Reusing Computations Whenever Makes Sense and is Possible
-        state = (hole, shots, exact, end)
+        state = (int(hole), int(shots), bool(exact), int(end))
         if type(front) == int:
             # Return the Probability of Getting the Target Score Given the Actual Score on the Front 9
+            if front < 9: print(f'Warning: impossible value ({front}) given for the score on the front 9')
             return self.P(9, shots - front, exact, end, return_uncertainty, None)
         elif type(front) in (Round, list):
             # Return the Probability of Getting the Target Score Given the Actual First n Holes
@@ -647,6 +648,8 @@ class Course(list):
             X.append(h)
             P.append(self.P(h - 1, params.target - S))
             S += s
+        X.append(h + 1)
+        P.append(self.P(front = True))
         
         # Plot the Result
         fix, ax = plt.subplots()
@@ -654,7 +657,7 @@ class Course(list):
         plt.plot(X, P, color = 'violet')
         plt.ylabel(f'Probability of Breaking {params.target + 1}')
         plt.xlabel('Hole')
-        plt.xticks(X, X)
+        plt.xticks([x + 0.5 for x in X[:-1]], X[:-1])
         plt.show()
 
     def plot_expected_shots(self, cumulative:bool = False):
@@ -743,7 +746,7 @@ class Course(list):
         # Plot the Result
         fig, ax = plt.subplots()
         plt.plot(x, probabilities, color = 'violet')
-        plt.ylabel('Overall Likelihood of Success')
+        plt.ylabel(f'P(front == x) * P(back <= {params.target} - x)')
         plt.xlabel('Score on the Front 9')
         plt.show()
         
@@ -758,7 +761,7 @@ class Course(list):
         # Plot the Result
         fig, ax = plt.subplots()
         plt.plot(front_scores, P, color = 'violet')
-        plt.ylabel('Likelihood of Success')
+        plt.ylabel(f'P(score <= {params.target} | front == x)')
         plt.xlabel('Score on the Front 9')
         plt.show()
         
@@ -801,6 +804,8 @@ class Course(list):
             if full_round: plt.plot(S, C2, '-.', color = 'lightgrey', zorder = 97)
         plt.xlabel('Total Shots')
         plt.ylabel('Likelihood')
+        k = 1 if len(S) < 20 else 2
+        plt.xticks(S[::k], S[::k])
         if full_round or cumulative: plt.legend()
         plt.show()
         
