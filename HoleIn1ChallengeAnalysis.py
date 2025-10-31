@@ -649,7 +649,7 @@ class Course(list):
             P.append(self.P(h - 1, params.target - S))
             S += s
         X.append(h + 1)
-        P.append(self.P(front = True))
+        P.append(self.P(front = scores))
         
         # Plot the Result
         fix, ax = plt.subplots()
@@ -796,9 +796,9 @@ class Course(list):
         # Plot the Result
         fix, ax = plt.subplots()
         #plt.plot([E, E], [0, max(P)], '--', color = 'lightgrey', label = f'Expected Shots = {E:.2f}')
-        plt.plot(S, P, color = 'violet', label = f'P(score == x | front = {shots})' if start else 'P(score == x)', zorder = 100)
+        plt.plot(S, P, color = 'violet', label = 'Predicted Distribution' if histogram else (f'P(score == x | front = {shots})' if start else 'P(score == x)'), zorder = 100)
         if full_round: plt.plot(S, P2, '--', color = 'lightgrey', label = 'P(score == x)', zorder = 99)
-        if histogram: plt.bar(S, [counts[s] for s in S], color = 'lightpink', alpha = 0.7, zorder = 96)
+        if histogram: plt.bar(S, [counts[s] for s in S], color = 'lightpink', alpha = 0.7, zorder = 96, label = 'Actual Scores')
         if cumulative:
             plt.plot(S, C, '-.', color = 'teal', label = 'P(score <= x)', zorder = 98)
             if full_round: plt.plot(S, C2, '-.', color = 'lightgrey', zorder = 97)
@@ -806,7 +806,7 @@ class Course(list):
         plt.ylabel('Likelihood')
         k = 1 if len(S) < 20 else 2
         plt.xticks(S[::k], S[::k])
-        if full_round or cumulative: plt.legend()
+        if full_round or cumulative or histogram: plt.legend()
         plt.show()
         
         # Return the Data
