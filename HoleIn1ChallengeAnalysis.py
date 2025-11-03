@@ -257,7 +257,7 @@ class Course(list):
         if len(self) == 0:
             return f"{self.course} : []"  #  this is very hard to hit lol
         else:
-            return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) if r in self.used else str(r).replace('[', '(').replace(']', ')') for r in self) + '\n]'
+            return f"{self.course} : [\n\t" + ',\n\t'.join(str(r) if r in self.used else f'({str(r)[1:-1]})' for r in self) + '\n]'
     
     def path_probability(self, path:list, start:int = 0) -> float:
         """Compute the Likelihood of a Particular Round"""
