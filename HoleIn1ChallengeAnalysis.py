@@ -16,7 +16,7 @@ from numpy.random import random, normal
 """-------------------- PARAMETERS --------------------"""
 class params:
     courses = ['bigputts', 'swingtime', 'teeaire', 'swingtime waukesha', 'gastraus', 'bigputts waukesha']
-    dataset = courses[-1]
+    dataset = courses[0]
     warmup_days = 2 #  how many days of data at the start of the challenge should be ignored as "warm up"
     use_historical = 0 # False/True/2 (only affects supported courses)
     weight_spread = 0.5
@@ -25,8 +25,9 @@ class params:
     target = 29
     z_score_target = target + 0.5
     use_weights = use_weights and weight_spread > 0
-    bp18 = False # at big putts, when false, use hole 1 for hole 18, when true use the special hole for hole 18 (challenge days 11+)
-    bpw18 = True # at big putts waukesha, they started using a random hole for hole 18 on day 18
+    bp18 = False  # at big putts, when false, use hole 1 for hole 18, when true use the special hole for hole 18 (challenge days 11+)
+    bpw18 = True  # at big putts waukesha, they started using a random hole for hole 18 on day 18
+    hio1p = True  # single player hole-in-one challenge
     
     # Determine Which Holes are Used for Hole 18
     hole18 = []
@@ -240,6 +241,15 @@ class Course(list):
                     s = sum(hole)
                     for i in range(len(hole)):
                         hole[i] /= s
+        
+        # Estimate Probabilities for the Single-Player Hole-In-One Challenge
+        if params.hio1p:
+            # Estimate the Single-Player Stats
+            self.shot_probabilities = self.estimate_single_player_probabilities(False)
+            
+            # Ignore 3's
+            for hole in self.shot_probabilities:
+                while len(hole) > 2: hole[1] += hole.pop()
         
         # Compute the Expected Number of Shots
         self.expected_shots = [sum(p*t for t, p in enumerate(hole, start = 1)) for h, hole in enumerate(self.shot_probabilities, start = 1)]
