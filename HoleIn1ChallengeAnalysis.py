@@ -20,14 +20,14 @@ class params:
     warmup_days = 2 #  how many days of data at the start of the challenge should be ignored as "warm up"
     use_historical = 0 # False/True/2 (only affects supported courses)
     weight_spread = 0.5
-    use_weights = 0
+    use_weights = False
     min_HI1_probability = 0
     target = 29
     z_score_target = target + 0.5
     use_weights = use_weights and weight_spread > 0
     bp18 = False  # at big putts, when false, use hole 1 for hole 18, when true use the special hole for hole 18 (challenge days 11+)
     bpw18 = True  # at big putts waukesha, they started using a random hole for hole 18 on day 18
-    hio1p = True  # single player hole-in-one challenge
+    hio1p = False # single player hole-in-one challenge
     
     # Determine Which Holes are Used for Hole 18
     hole18 = []

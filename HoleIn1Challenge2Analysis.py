@@ -1,0 +1,152 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Nov 10 14:00:50 2025
+
+@author: Violet
+"""
+
+from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product
+params.hio1p = True
+params.alpha = 0  #  how much to weight the new data vs the old data
+params.dataset = params.courses[0]  #  bigputts : 2-man scramble data to use
+params.filepath = 'bigputts single-player.txt'  #  the path to the single-player data
+
+class Day(list):
+    def __init__(self, day:str, line:str):
+        self._day = day
+        self.day = int(''.join(c for c in day if c.isdigit()))
+        self.name = ''.join(c for c in day if not c.isdigit())
+        self.extend(map(int, line))
+        self.holes = len(self)
+        self.ones = self.count(1)
+        self.rate = self.ones / self.holes
+        self.front = self[:9].count(1) if len(self) >= 9 else None
+    
+    def __repr__(self):
+        return f"[{self._day} : {''.join(map(str, self))}{'.'*(18 - len(self))} ({self.ones})]"
+
+class Player(list):
+    def __init__(self, name:str):
+        # Load the Data
+        self.name = name
+        days = [Day(*l.replace(' ', '').split(':')) for l in readlines(params.filepath)]
+        self.extend(day for day in days if day.name == self.name)
+        
+        # Compute the Hole Probabilities
+        self.weights = None
+        self.counts = None
+        self.probabilities = None
+        self.variances = None
+        self.variance = None
+        self.compute_probabilities()
+        self._cache = {}
+    
+    def __repr__(self):
+        name = 'steven' if self.name == 's' else 'danny'
+        if len(self):
+            return f"{params.filepath.split('.')[0]} ({name}) : [\n\t{'\n\t'.join(map(str, self))}\n]"
+        else:
+            return f"[{params.filepath.split('.')[0]} ({name}) : ]"
+    
+    def compute_probabilities(self):
+        # Count the 1s
+        self.counts = [[0, 0] for _ in range(18)]
+        self.weights = list(map(float, np.linspace(1 - params.weight_spread, 1 + params.weight_spread, len(self)))) if params.use_weights else [1]*len(self)
+        for day, weight in zip(self, self.weights):
+            for hole, score in enumerate(day):
+                self.counts[hole][1 - score] += weight
+        
+        # Compute the Probabilities
+        self.probabilities = [ones / (ones + others) if (ones + others) else 0 for ones, others in self.counts]
+        
+        # Incorporate Counts from the Original 2-Man Scramble Challenge
+        if params.alpha != 1:
+            course = Course()
+            for h, (p, q) in enumerate(zip(self.probabilities, course.shot_probabilities)):
+                q = q[0]
+                c1 = sum(self.counts[h])
+                c2 = sum(course.counts[h].values())
+                self.counts[h][0] = params.alpha * self.counts[h][0] + (1 - params.alpha) * course.counts[h][1]
+                self.counts[h][1] = params.alpha * self.counts[h][1] + (1 - params.alpha) * (c2 - course.counts[h][1])
+                self.probabilities[h] = float((params.alpha * p * c1 + (1 - params.alpha) * q * c2) / (c1 + c2))
+        
+        # Estimate the Variance on Everything
+        self.variances = [float(p * (1 - p) / sum(counts)) for p, counts in zip(self.probabilities, self.counts)]
+        if params.hole18 != [17]: self.variances[17] = sum(self.variances[h] for h in params.hole18) / len(params.hole18)
+        self.variance = sum(self.variances)
+    
+    def P(self, ones:int = 7, start:int = 0, stop:int = 18, exact:int = False, return_uncertainty:bool = False):
+        """Compute the Probability of Getting <ones> Holes-in-One on Holes <start> to <stop>"""
+        # Check the Cache
+        state = (ones, start, stop, exact)
+        if state not in self._cache:
+            if ones > stop - start:
+                # Pruning/Base Case (there aren't enough holes to get the specified number of ones)
+                self._cache[state] = 0
+            elif not exact:
+                # Non-Exact = Cumulative
+                self._cache[state] = self.P(ones, start, stop, True, False) + self.P(ones + 1, start, stop, False, False)
+            elif start == stop:
+                # Base Case (there are no more holes left to play)
+                self._cache[state] = int(ones == 0)
+            elif ones:
+                # Main Recursive Case (probability you get a one this hole, plus the probability you don't)
+                p = self.probabilities[start]
+                self._cache[state] = p * self.P(ones - 1, start + 1, stop, True, False) + (1 - p) * self.P(ones, start + 1, stop, True, False)
+            else:
+                # Secondary Recursive Case (ones are no longer allowed)
+                #self._cache[state] = (1 - self.probabilities[start]) * self.P(ones, start + 1, stop, True, False)
+                self._cache[state] = product(1 - p for p in self.probabilities[start:stop])
+        
+        # Return the Cached Result
+        if return_uncertainty:
+            return self._cache[state], self._cache[state] * sum(self.variances[start:stop])**0.5
+        else:
+            return self._cache[state]
+    
+    def E(self, ones:int = 7, exact:bool = False, start:int = 0, stop:int = 18, return_uncertainty:bool = True):
+        """Compute the Expected Number of Days to Complete the Challenge (includes uncertainty propagation)"""
+        p = self.P(ones, start, stop, exact, return_uncertainty)
+        if return_uncertainty:
+            p, u = p
+            e = 1/p
+            ue = u * e**2
+            return e, ue
+        else:
+            return 1/p
+    
+    def rank_holes(self, indices:bool = False, probabilities:list = None) -> list:
+        if probabilities == None: probabilities = self.probabilities
+        return sorted(range(1 - int(indices), 19 - int(indices)), key = lambda h : probabilities[h - 1 + int(indices)], reverse = True)
+    
+    def plot_probabilities(self, probabilities:list = None, ranked:bool = True, width = 0.75):
+        """Plot the Hole Probabilities as a Stacked Bar Plot"""
+        
+        # get the data in the proper format
+        probabilities = self.probabilities if probabilities == None else probabilities
+        x = self.rank_holes(False, probabilities) if ranked else list(range(1, 19))
+        y = [probabilities[h - 1] for h in x]
+        probabilities = np.array([[p, 1 - p] for p in y]).transpose()
+        
+        # Make the Main Figure
+        xx = np.array(range(1, 19))
+        bottom = np.zeros(18)
+        fig, ax = plt.subplots()
+        colors = ['violet', 'mediumorchid', 'purple', 'indigo', 'maroon', 'red']
+        for s in range(2):
+            ax.bar(xx, probabilities[s], width, label = 'P(1)' if s == 0 else 'P(2+)', bottom = bottom, color = colors[s])
+            bottom += probabilities[s]
+        
+        # Add the Text/Legend
+        x0, y0, w, h = ax.get_position().bounds
+        ax.set_xlabel('Hole')
+        ax.set_ylabel('Probability')
+        ax.legend(loc = 'center left', bbox_to_anchor = (1, 0.5))
+        plt.xticks(xx, x)
+        
+        # Show the Figure
+        plt.show()
+
+# Load the Data
+danny = Player('d')
+steven = Player('s')
