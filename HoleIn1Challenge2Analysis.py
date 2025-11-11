@@ -5,9 +5,9 @@ Created on Mon Nov 10 14:00:50 2025
 @author: Violet
 """
 
-from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product
+from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product, Counter
 params.hio1p = True
-params.alpha = 0  #  how much to weight the new data vs the old data
+params.alpha = 0.5  #  how much to weight the new data vs the old data
 params.dataset = params.courses[0]  #  bigputts : 2-man scramble data to use
 params.filepath = 'bigputts single-player.txt'  #  the path to the single-player data
 
@@ -57,7 +57,7 @@ class Player(list):
                 self.counts[hole][1 - score] += weight
         
         # Compute the Probabilities
-        self.probabilities = [ones / (ones + others) if (ones + others) else 0 for ones, others in self.counts]
+        self.probabilities = [float(ones / (ones + others)) if (ones + others) else 0 for ones, others in self.counts]
         
         # Incorporate Counts from the Original 2-Man Scramble Challenge
         if params.alpha != 1:
@@ -66,12 +66,12 @@ class Player(list):
                 q = q[0]
                 c1 = sum(self.counts[h])
                 c2 = sum(course.counts[h].values())
-                self.counts[h][0] = params.alpha * self.counts[h][0] + (1 - params.alpha) * course.counts[h][1]
-                self.counts[h][1] = params.alpha * self.counts[h][1] + (1 - params.alpha) * (c2 - course.counts[h][1])
-                self.probabilities[h] = float((params.alpha * p * c1 + (1 - params.alpha) * q * c2) / (c1 + c2))
+                self.counts[h][0] = float(params.alpha * p * c1 + (1 - params.alpha) * q * c2)
+                self.counts[h][1] = float(params.alpha * (1 - p) * c1 + (1 - params.alpha) * (1 - q) * c2)
+                self.probabilities[h] = float(self.counts[h][0] / sum(self.counts[h]))
         
         # Estimate the Variance on Everything
-        self.variances = [float(p * (1 - p) / sum(counts)) for p, counts in zip(self.probabilities, self.counts)]
+        self.variances = [float(p * (1 - p) / sum(counts)) if sum(counts) else 1/len(self) for p, counts in zip(self.probabilities, self.counts)]
         if params.hole18 != [17]: self.variances[17] = sum(self.variances[h] for h in params.hole18) / len(params.hole18)
         self.variance = sum(self.variances)
     
@@ -145,6 +145,40 @@ class Player(list):
         plt.xticks(xx, x)
         
         # Show the Figure
+        plt.show()
+    
+    def plot_distribution(self, start:int = 0, stop:int = 18, cumulative:bool = False, histogram:bool = False):
+        """Plot the Distirbution for the Total Number of Ones over the Specified Holes"""
+        # Get the Data
+        max_ones = sum(p > 0 for p in self.probabilities[start:stop])
+        x = list(range(min(max_ones + 2, 19)))
+        p = [self.P(ones, start, stop, True, True) for ones in x]
+        y = [p for p, _ in p]
+        c = [0]*len(p)
+        c[-1] = p[-1][0]
+        for i in range(len(p) - 2, -1, -1): c[i] = p[i][0] + c[i + 1]
+        counts = Counter(day.ones for day in self)
+        bars = [counts[x] / len(self) for x in x]
+        
+        # Plot the Results
+        fig, ax = plt.subplots(1, 1)
+        legend = False
+        if histogram:
+            plt.bar(x, bars, color = 'lightpink', alpha = 0.7, label = 'Actual Scores')
+            legend = True
+        plt.plot(x, y, color = 'violet', label = 'P(ones == x)')
+        if cumulative:
+            plt.plot(x, c, '-.', color = 'teal', label = 'P(ones >= x)')
+            plt.ylabel('Probability')
+            legend = True
+        elif not histogram:
+            y1 = [p - up for p, up in p]
+            y2 = [p + up for p, up in p]
+            plt.fill_between(x, y1, y2, color = 'violet', alpha = 0.2)
+            plt.ylabel('P(ones == x)')
+        if legend: plt.legend()
+        plt.xlabel('Holes in One')
+        plt.xticks(x)
         plt.show()
 
 # Load the Data
