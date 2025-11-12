@@ -69,6 +69,7 @@ class Player(list):
                 self.counts[h][0] = float(params.alpha * p * c1 + (1 - params.alpha) * q * c2)
                 self.counts[h][1] = float(params.alpha * (1 - p) * c1 + (1 - params.alpha) * (1 - q) * c2)
                 self.probabilities[h] = float(self.counts[h][0] / sum(self.counts[h]))
+                #self.probabilities[h] = float((params.alpha * p * c1 + (1 - params.alpha) * q * c2) / (params.alpha * c1 + (1 - params.alpha) * c2))
         
         # Estimate the Variance on Everything
         self.variances = [float(p * (1 - p) / sum(counts)) if sum(counts) else 1/len(self) for p, counts in zip(self.probabilities, self.counts)]
@@ -85,14 +86,14 @@ class Player(list):
                 self._cache[state] = 0
             elif not exact:
                 # Non-Exact = Cumulative
-                self._cache[state] = self.P(ones, start, stop, True, False) + self.P(ones + 1, start, stop, False, False)
+                self._cache[state] = self.P(ones, start, stop, True) + self.P(ones + 1, start, stop, False)
             elif start == stop:
                 # Base Case (there are no more holes left to play)
                 self._cache[state] = int(ones == 0)
             elif ones:
                 # Main Recursive Case (probability you get a one this hole, plus the probability you don't)
                 p = self.probabilities[start]
-                self._cache[state] = p * self.P(ones - 1, start + 1, stop, True, False) + (1 - p) * self.P(ones, start + 1, stop, True, False)
+                self._cache[state] = p * self.P(ones - 1, start + 1, stop, True) + (1 - p) * self.P(ones, start + 1, stop, True)
             else:
                 # Secondary Recursive Case (ones are no longer allowed)
                 #self._cache[state] = (1 - self.probabilities[start]) * self.P(ones, start + 1, stop, True, False)
@@ -103,6 +104,10 @@ class Player(list):
             return self._cache[state], self._cache[state] * sum(self.variances[start:stop])**0.5
         else:
             return self._cache[state]
+    
+    def P2(self, ones:int = 7, start:int = 0, return_uncertainty:bool = True):
+        """Compute the Probability of Scoring Exactly the Specified Number of Ones in a Round (with early stopping)"""
+        return self.P(ones, start, 18 - max(7 - ones), True, return_uncertainty)
     
     def E(self, ones:int = 7, exact:bool = False, start:int = 0, stop:int = 18, return_uncertainty:bool = True):
         """Compute the Expected Number of Days to Complete the Challenge (includes uncertainty propagation)"""
@@ -147,12 +152,15 @@ class Player(list):
         # Show the Figure
         plt.show()
     
-    def plot_distribution(self, start:int = 0, stop:int = 18, cumulative:bool = False, histogram:bool = False):
+    def plot_distribution(self, start:int = 0, stop:int = 18, cumulative:bool = False, histogram:bool = False, early_stopping:bool = True):
         """Plot the Distirbution for the Total Number of Ones over the Specified Holes"""
-        # Get the Data
+        # Update the <early_stopping> Parameter
+        if stop != 18: early_stopping = False
+        
+        # Get/Copmpute all the Data
         max_ones = sum(p > 0 for p in self.probabilities[start:stop])
         x = list(range(min(max_ones + 2, 19)))
-        p = [self.P(ones, start, stop, True, True) for ones in x]
+        p = [self.P(ones, start, stop - early_stopping * max(7 - ones, 0), True, True) for ones in x] # stop is variable because the challenge stops early
         y = [p for p, _ in p]
         c = [0]*len(p)
         c[-1] = p[-1][0]
@@ -160,7 +168,7 @@ class Player(list):
         counts = Counter(day.ones for day in self)
         bars = [counts[x] / len(self) for x in x]
         
-        # Plot the Results
+        # Plot the Specified Results with Appropriate Lables/Formatting
         fig, ax = plt.subplots(1, 1)
         legend = False
         if histogram:
