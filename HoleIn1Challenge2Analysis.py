@@ -56,6 +56,7 @@ class Player(list):
             return f"[{params.filepath.split('.')[0]} ({name}) : ]"
     
     def compute_probabilities(self):
+        """Compute the Hole-In-One Probability for Each Hole (using the settings in the static class <params>)"""
         # Count the 1s
         self.counts = [[0, 0] for _ in range(18)]
         self.weights = list(map(float, np.linspace(1 - params.weight_spread, 1 + params.weight_spread, len(self)))) if params.use_weights else [1]*len(self)
@@ -82,6 +83,16 @@ class Player(list):
         self.variances = [float(p * (1 - p) / sum(counts)) if sum(counts) else 1/len(self) for p, counts in zip(self.probabilities, self.counts)]
         if params.hole18 != [17]: self.variances[17] = sum(self.variances[h] for h in params.hole18) / len(params.hole18)
         self.variance = sum(self.variances)
+    
+    def _compute_challenge_probabilities(self) -> list:
+        # Count the 1's on Each Hole
+        counts = [[0, 0] for _ in range(18)]
+        for day, weight in zip(self, self.weights):
+            for hole, score in enumerate(day):
+                counts[hole][1 - score] += weight
+        
+        # Compute and Return the Probabilities
+        return [float(ones / (ones + others)) for ones, others in counts if (ones + others)]
     
     def P(self, ones:int = 7, start:int = 0, stop:int = 18, exact:int = False, return_uncertainty:bool = False):
         """Compute the Probability of Getting <ones> Holes-in-One on Holes <start> to <stop>"""
@@ -129,20 +140,22 @@ class Player(list):
     
     def rank_holes(self, indices:bool = False, probabilities:list = None) -> list:
         if probabilities == None: probabilities = self.probabilities
-        return sorted(range(1 - int(indices), 19 - int(indices)), key = lambda h : probabilities[h - 1 + int(indices)], reverse = True)
+        return sorted(range(1 - int(indices), len(probabilities) + 1 - int(indices)), key = lambda h : probabilities[h - 1 + int(indices)], reverse = True)
     
     def plot_probabilities(self, probabilities:list = None, ranked:bool = True, width = 0.75):
         """Plot the Hole Probabilities as a Stacked Bar Plot"""
         
         # get the data in the proper format
         probabilities = self.probabilities if probabilities == None else probabilities
-        x = self.rank_holes(False, probabilities) if ranked else list(range(1, 19))
+        probabilities = self._compute_challenge_probabilities() if probabilities == 'challenge' else probabilities
+        holes = len(probabilities)
+        x = self.rank_holes(False, probabilities) if ranked else list(range(1, holes + 1))
         y = [probabilities[h - 1] for h in x]
         probabilities = np.array([[p, 1 - p] for p in y]).transpose()
         
         # Make the Main Figure
-        xx = np.array(range(1, 19))
-        bottom = np.zeros(18)
+        xx = np.array(range(1, holes + 1))
+        bottom = np.zeros(holes)
         fig, ax = plt.subplots()
         colors = ['violet', 'mediumorchid', 'purple', 'indigo', 'maroon', 'red']
         for s in range(2):
