@@ -5,7 +5,7 @@ Created on Mon Nov 10 14:00:50 2025
 @author: Violet
 """
 
-from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product, Counter
+from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product, Counter, norm
 params.hio1p = True
 params.alpha = 0.5  #  how much to weight the new data vs the old data
 params.dataset = params.courses[0]  #  bigputts : 2-man scramble data to use
@@ -138,8 +138,47 @@ class Player(list):
         else:
             return 1/p
     
-    def analyze(self):
-        pass
+    def ExpectedOnes(self, start:int = 0, stop:int = 18) -> (float, float, float):
+        """Compute the Expected Number of Ones over the Specified Holes, as Well as both the Variance and the Uncertainty"""
+        X = list(range(stop - start + 1))
+        E = sum(self.P(ones, start, stop, True, False) * ones for ones in X)
+        E2 = sum(self.P(ones, start, stop, True, False) * ones**2 for ones in X)
+        S = abs(E**2 - E2)**0.5
+        U = S / len(self)**0.5
+        return E, S, U
+    
+    def analyze(self, ones:int = 7):
+        """Estimate the Probability of Completing the Challenge, and the Number of Days to Complete the Challenge"""
+        # Helper Function for Computing things via Z Scores
+        def P(u:float, s:float):
+            # Compute the Z Score
+            z = (u - ones + 0.5) / s
+            
+            # Compute the Probability
+            p = float(norm.sf(-z))
+            
+            # Estimate the Uncertainty on the Probability
+            uz = 1 / len(self)**0.5  #  uncertainty on the z score
+            up = uz * float(np.exp(-0.5 * z**2) / np.sqrt(8)) #  calculus approzimation for single-variable error propagation
+            
+            # Estimate the Number of Days
+            e = 1/p
+            ue = up * e**2
+            
+            # Return the Results
+            return z, p, up, e, ue
+        
+        # Compute the Main Results
+        p, up = self.P(ones, 0, 18, False, True)
+        e, ue = self.E(ones, False, 0, 18, True)
+        s, ss, _ = self.ExpectedOnes(0, 18)
+        
+        # Compute an Estimate of the Probability Using Z-Score Methods
+        s2, ss2, = s, ss
+        z2, p2, up2, e2, ue2 = P(s2, ss2)
+        
+        print((s, ss), None, (p, up), (e, ue))
+        print((s2, ss2), z2, (p2, up2), (e2, ue2))
     
     def rank_holes(self, indices:bool = False, probabilities:list = None) -> list:
         if probabilities == None: probabilities = self.probabilities
@@ -212,7 +251,7 @@ class Player(list):
         plt.xticks(x)
         plt.show()
     
-    def plot_expected_ones(self, target:int = 7, exact:bool = False):
+    def plot_expected_ones(self, target:int = 7, exact:bool = False, stdev:bool = False):
         """Plot the Expected Number of Ones after Each Hole for a Successful Run"""
         # Compute the Expected Number of Ones After the Specified Hole
         def Y(hole:int):
@@ -232,7 +271,7 @@ class Player(list):
         ticks = list(range(1, 19))
         plt.plot(X, [target]*len(X), '--', color = 'lightgrey')
         plt.plot(X, E, color = 'violet')
-        #plt.fill_between(X, E - uE, E + uE, color = 'violet', alpha = 0.2)
+        if stdev: plt.fill_between(X, E - uE, E + uE, color = 'violet', alpha = 0.2)
         plt.xticks(ticks)
         plt.xlabel('Hole')
         plt.ylabel('Expected Ones')
