@@ -12,24 +12,31 @@ params.dataset = params.courses[0]  #  bigputts : 2-man scramble data to use
 params.filepath = 'bigputts single-player.txt'  #  the path to the single-player data
 
 class Day(list):
-    def __init__(self, day:str, line:str):
-        self._day = day
+    def __init__(self, line:str):
+        day, line = line.split(':')
+        line = line.replace(' ', '')
+        self._day = day.rstrip(' ')
         self.day = int(''.join(c for c in day if c.isdigit()))
-        self.name = ''.join(c for c in day if not c.isdigit())
+        self.name = ''.join(c for c in day if not c.isdigit() and c != ' ')
         self.extend(map(int, line))
         self.holes = len(self)
         self.ones = self.count(1)
         self.rate = self.ones / self.holes
         self.front = self[:9].count(1) if len(self) >= 9 else None
+        if self._day.endswith(self.name): self._day = self._day[:-len(self.name)]
     
     def __repr__(self):
-        return f"[{self._day} : {''.join(map(str, self))}{'.'*(18 - len(self))} ({self.ones})]"
+        front = ''.join(map(str, self[:9]))
+        back = ''.join(map(str, self[9:]))
+        front = front + '.'*(9 - len(front))
+        back = back + '.'*(9 - len(back))
+        return f"[{self._day} : {front} {back} ({self.ones})]"
 
 class Player(list):
     def __init__(self, name:str):
         # Load the Data
         self.name = name
-        days = [Day(*l.replace(' ', '').split(':')) for l in readlines(params.filepath)]
+        days = [Day(l) for l in readlines(params.filepath)]
         self.extend(day for day in days if day.name == self.name)
         
         # Compute the Hole Probabilities
