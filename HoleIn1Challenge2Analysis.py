@@ -138,12 +138,15 @@ class Player(list):
         else:
             return 1/p
     
+    def analyze(self):
+        pass
+    
     def rank_holes(self, indices:bool = False, probabilities:list = None) -> list:
         if probabilities == None: probabilities = self.probabilities
         return sorted(range(1 - int(indices), len(probabilities) + 1 - int(indices)), key = lambda h : probabilities[h - 1 + int(indices)], reverse = True)
     
     def plot_probabilities(self, probabilities:list = None, ranked:bool = True, width = 0.75):
-        """Plot the Hole Probabilities as a Stacked Bar Plot"""
+        """Plot the Hole Probabilities as a Stacked Bar Plot (probabilities = 'challenge' ignores historical data)"""
         
         # get the data in the proper format
         probabilities = self.probabilities if probabilities == None else probabilities
@@ -207,6 +210,32 @@ class Player(list):
         if legend: plt.legend()
         plt.xlabel('Holes in One')
         plt.xticks(x)
+        plt.show()
+    
+    def plot_expected_ones(self, target:int = 7, exact:bool = False):
+        """Plot the Expected Number of Ones after Each Hole for a Successful Run"""
+        # Compute the Expected Number of Ones After the Specified Hole
+        def Y(hole:int):
+            X = list(range(hole + 1))
+            P = [self.P(x, 0, hole, True, False) * self.P(target - x, hole, 18, exact, False) for x in X]
+            EX = sum(x * p for x, p in zip(X, P)) / sum(P)
+            sEX = abs(sum(x * p**2 for x, p in zip(X, P)) - EX**2)**0.5
+            return EX, sEX
+        
+        # Compute the Expected Ones
+        E = [Y(h) for h in range(19)]
+        uE = np.array([ue for _, ue in E])
+        E = np.array([e for e, _ in E])
+        
+        # Plot the Result
+        X = [x + 0.5 for x in range(19)]
+        ticks = list(range(1, 19))
+        plt.plot(X, [target]*len(X), '--', color = 'lightgrey')
+        plt.plot(X, E, color = 'violet')
+        #plt.fill_between(X, E - uE, E + uE, color = 'violet', alpha = 0.2)
+        plt.xticks(ticks)
+        plt.xlabel('Hole')
+        plt.ylabel('Expected Ones')
         plt.show()
 
 # Load the Data
