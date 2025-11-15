@@ -51,7 +51,8 @@ class Player(list):
     def __repr__(self):
         name = 'steven' if self.name == 's' else 'danny'
         if len(self):
-            return f"{params.filepath.split('.')[0]} ({name}) : [\n\t{'\n\t'.join(map(str, self))}\n]"
+            days = '\n\t'.join(map(str, self))
+            return f"{params.filepath.split('.')[0]} ({name}) : [\n\t{days}\n]"
         else:
             return f"[{params.filepath.split('.')[0]} ({name}) : ]"
     
@@ -177,8 +178,30 @@ class Player(list):
         s2, ss2, = s, ss
         z2, p2, up2, e2, ue2 = P(s2, ss2)
         
-        print((s, ss), None, (p, up), (e, ue))
-        print((s2, ss2), z2, (p2, up2), (e2, ue2))
+        # Get the Expected Number of Days From a P Value
+        def E(p:float, up:float = None) -> str:
+            if p <= 0:
+                return 'NaN' if up == None else 'NaN ± NaN'
+            elif up == None:
+                return f"{1 / p + params.warmup_days:.2f}"
+            else:
+                e = 1/p
+                ue = up * e**2
+                return f"{e + params.warmup_days:.2f} ± {ue:.2f}"
+        
+        # Print the Results
+        def println(method:str, e_shots = None, s_shots = None, z = None, p = None, up = None, e_days = None, u_days = None):
+            s_shots = '\t' if s_shots == None else f'{s_shots:.3f}'
+            z = ' \t' if z == None else f'{z:.3f}'
+            e = E(p, up) if e_days == None else f'{e_days:.2f} ± {u_days:.2f}'
+            print(f'{method}\t{e_shots:.2f}\t\t{s_shots}\t\t{z}\t\t  {p:.5f}\t\t\t{e}')
+        
+        print('Method\t\t\tMean\t\tSTDev\t\tZ-Score\t\tProbability\t\t\tExpected Days')
+        print('-'*89)
+        println('Tree Search\t', s, ss, None, p, up, e, ue)
+        #print('-'*89)
+        println('Z-Score\t\t', s2, ss2, z2, p2, up2, e2, ue2)
+        print('-'*89)
     
     def rank_holes(self, indices:bool = False, probabilities:list = None) -> list:
         if probabilities == None: probabilities = self.probabilities
@@ -280,3 +303,9 @@ class Player(list):
 # Load the Data
 danny = Player('d')
 steven = Player('s')
+
+# Run the Main Analysis
+print('Danny:')
+danny.analyze()
+print('\nSteven:')
+steven.analyze()
