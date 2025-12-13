@@ -7,9 +7,10 @@ Created on Mon Nov 10 14:00:50 2025
 
 from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product, Counter, norm
 params.hio1p = True
-params.alpha = 0.5  #  how much to weight the new data vs the old data
+params.alpha = 1  #  how much to weight the new data vs the old data
 params.dataset = params.courses[0]  #  bigputts : 2-man scramble data to use
 params.filepath = 'bigputts single-player.txt'  #  the path to the single-player data
+params.hole18 = [0]  # hole 18 = hole 1
 
 class Day(list):
     def __init__(self, line:str):
@@ -68,6 +69,12 @@ class Player(list):
         # Compute the Probabilities
         self.probabilities = [float(ones / (ones + others)) if (ones + others) else 0 for ones, others in self.counts]
         
+        # Edit the Hole 18 Probability
+        if params.hole18 != [17]: 
+            totals = [sum(c) for c in self.counts]
+            self.probabilities[17] = sum(self.probabilities[i] * totals[i] for i in params.hole18) / sum(totals[i] for i in params.hole18)
+            self.counts[-1] = [sum(self.counts[i][j] for i in params.hole18) for j in range(2)]
+        
         # Incorporate Counts from the Original 2-Man Scramble Challenge
         if params.alpha != 1:
             course = Course()
@@ -99,34 +106,37 @@ class Player(list):
         """Compute the Probability of Getting <ones> Holes-in-One on Holes <start> to <stop>"""
         # Check the Cache
         state = (ones, start, stop, exact)
-        if state not in self._cache:
-            if ones > stop - start:
-                # Pruning/Base Case (there aren't enough holes to get the specified number of ones)
-                self._cache[state] = 0
-            elif not exact:
-                # Non-Exact = Cumulative
-                self._cache[state] = self.P(ones, start, stop, True) + self.P(ones + 1, start, stop, False)
-            elif start == stop:
-                # Base Case (there are no more holes left to play)
-                self._cache[state] = int(ones == 0)
-            elif ones:
-                # Main Recursive Case (probability you get a one this hole, plus the probability you don't)
-                p = self.probabilities[start]
-                self._cache[state] = p * self.P(ones - 1, start + 1, stop, True) + (1 - p) * self.P(ones, start + 1, stop, True)
-            else:
-                # Secondary Recursive Case (ones are no longer allowed)
-                #self._cache[state] = (1 - self.probabilities[start]) * self.P(ones, start + 1, stop, True, False)
-                self._cache[state] = product(1 - p for p in self.probabilities[start:stop])
+        if return_uncertainty:
+            p = self.P(ones, start, stop, exact, False)
+            return p, p * sum(self.variances[start:stop])**0.5
+        elif ones > stop - start or stop < start or ones < 0:
+            # Pruning/Base Case (there aren't enough holes to get the specified number of ones)
+            # Bad Case: the starting hole is after the ending hole
+            # Bad Case: the target number of ones is negative
+            return 0
+        elif state in self._cache:
+            pass #  don't re-compute non-trivial computations
+        elif not exact:
+            # Non-Exact = Cumulative
+            self._cache[state] = self.P(ones, start, stop, True) + self.P(ones + 1, start, stop, False)
+        elif start == stop:
+            # Base Case: there are nor more holes to play, was the appropriate number of ones achieved?
+            self._cache[state] = int(ones == 0)
+        elif ones:
+            # Main Recursive Case (probability you get a one this hole, plus the probability you don't)
+            p = self.probabilities[start]
+            self._cache[state] = p * self.P(ones - 1, start + 1, stop, True) + (1 - p) * self.P(ones, start + 1, stop, True)
+        else:
+            # Secondary Recursive Case (ones are no longer allowed)
+            self._cache[state] = (1 - self.probabilities[start]) * self.P(ones, start + 1, stop, True, False)
+            #self._cache[state] = product(1 - p for p in self.probabilities[start:stop])
         
         # Return the Cached Result
-        if return_uncertainty:
-            return self._cache[state], self._cache[state] * sum(self.variances[start:stop])**0.5
-        else:
-            return self._cache[state]
+        return self._cache[state]
     
     def P2(self, ones:int = 7, start:int = 0, return_uncertainty:bool = True):
         """Compute the Probability of Scoring Exactly the Specified Number of Ones in a Round (with early stopping)"""
-        return self.P(ones, start, 18 - max(7 - ones), True, return_uncertainty)
+        return self.P(ones, start, 18 - max(6 - ones, 0), True, return_uncertainty)
     
     def E(self, ones:int = 7, exact:bool = False, start:int = 0, stop:int = 18, return_uncertainty:bool = True):
         """Compute the Expected Number of Days to Complete the Challenge (includes uncertainty propagation)"""
@@ -245,13 +255,18 @@ class Player(list):
         # Get/Copmpute all the Data
         max_ones = sum(p > 0 for p in self.probabilities[start:stop])
         x = list(range(min(max_ones + 2, 19)))
-        p = [self.P(ones, start, stop - early_stopping * max(7 - ones, 0), True, True) for ones in x] # stop is variable because the challenge stops early
+        if early_stopping:
+            p = [self.P2(ones, start, True) for ones in x]
+        else:
+            p = [self.P(ones, start, stop, True, True) for ones in x]
         y = [p for p, _ in p]
-        c = [0]*len(p)
-        c[-1] = p[-1][0]
-        for i in range(len(p) - 2, -1, -1): c[i] = p[i][0] + c[i + 1]
+        c = [self.P(ones, start, stop - early_stopping * max(6 - ones, 0), False) for ones in x]
         counts = Counter(day.ones for day in self)
         bars = [counts[x] / len(self) for x in x]
+        
+        # Check that the Probabilities Sum to 1
+        if abs(sum(y) - 1) > 1e-10:
+            print(f'warning: probabilities sum to {sum(y)}')
         
         # Plot the Specified Results with Appropriate Lables/Formatting
         fig, ax = plt.subplots(1, 1)
