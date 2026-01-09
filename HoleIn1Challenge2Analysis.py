@@ -5,7 +5,7 @@ Created on Mon Nov 10 14:00:50 2025
 @author: Violet
 """
 
-from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product, Counter, norm
+from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product, Counter, norm, random
 params.hio1p = True
 params.new_putters = True
 params.alpha = 1  #  how much to weight the new data vs the old data
@@ -219,6 +219,29 @@ class Player(list):
         if probabilities == None: probabilities = self.probabilities
         return sorted(range(1 - int(indices), len(probabilities) + 1 - int(indices)), key = lambda h : probabilities[h - 1 + int(indices)], reverse = True)
     
+    def _sim(self, early_stopping:bool = True) -> int:
+        """Simulate a Single Round, and Return the Score"""
+        score = 0
+        for h, p in enumerate(self.probabilities):
+            if early_stopping and h - score >= 11: break
+            score += int(random() < p)
+        return score
+    
+    def simulate(self, N:int = 0, early_stopping:bool = True):
+        """Simulate a Round 
+        (returns the number of ones in that single round when N == 0, 
+        or returns a list of count data: counts[score] = #times <score> was achieved)
+        """
+        if N == 0:
+            return self._sim(early_stopping)
+        else:
+             counts = []
+             for _ in range(N):
+                 score = self._sim(early_stopping)
+                 while score >= len(counts): counts.append(0)
+                 counts[score] += 1
+             return counts
+    
     def plot_probabilities(self, probabilities:list = None, ranked:bool = True, width = 0.75):
         """Plot the Hole Probabilities as a Stacked Bar Plot (probabilities = 'challenge' ignores historical data)"""
         
@@ -320,6 +343,17 @@ class Player(list):
 # Load the Data
 danny = Player('d')
 steven = Player('s')
+
+# Monte-Carlo Sim to Estimate the Challenge Length
+def monte_carlo(N:int = 1000, early_stopping = True):
+    def sim():
+        days = 1
+        while danny.simulate(0, early_stopping) < 7 and steven.simulate(0, early_stopping) < 7: days += 1
+        return days
+    
+    data = [sim() for _ in range(1000)]
+    
+    return np.mean(data), np.std(data)
 
 # Run the Main Analysis
 print('Danny:')
