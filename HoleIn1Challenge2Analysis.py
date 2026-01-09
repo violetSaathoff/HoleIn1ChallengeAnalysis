@@ -7,6 +7,7 @@ Created on Mon Nov 10 14:00:50 2025
 
 from HoleIn1ChallengeAnalysis import Course, params, readlines, np, plt, product, Counter, norm
 params.hio1p = True
+params.new_putters = True
 params.alpha = 1  #  how much to weight the new data vs the old data
 params.dataset = params.courses[0]  #  bigputts : 2-man scramble data to use
 params.filepath = 'bigputts single-player.txt'  #  the path to the single-player data
@@ -38,6 +39,7 @@ class Player(list):
         # Load the Data
         self.name = name
         days = [Day(l) for l in readlines(params.filepath)]
+        if not params.new_putters: days = [day for day in days if 39 <= day.day < 49]
         self.extend(day for day in days if day.name == self.name)
         
         # Compute the Hole Probabilities
